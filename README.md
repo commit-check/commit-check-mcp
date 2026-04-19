@@ -1,5 +1,11 @@
 # commit-check-mcp
 
+[![PyPI version](https://img.shields.io/pypi/v/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
+[![Build](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml/badge.svg)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
+[![Coverage](https://codecov.io/gh/commit-check/commit-check-mcp/graph/badge.svg)](https://codecov.io/gh/commit-check/commit-check-mcp)
+[![MCP server](https://img.shields.io/badge/MCP-server-0A7B83)](https://modelcontextprotocol.io/)
+
 Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
 
 `commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, and repository state.

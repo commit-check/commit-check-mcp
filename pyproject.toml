@@ -19,7 +19,8 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=9.0.0,<10"
+  "pytest>=9.0.0,<10",
+  "pytest-cov>=6.0.0,<7"
 ]
 
 [project.scripts]
