@@ -2,6 +2,8 @@
 
 Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
 
+`commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, and repository state.
+
 ## Features
 
 This MCP server exposes commit-check validations as MCP tools:
@@ -31,19 +33,127 @@ All validation tools return the same structured commit-check result shape:
 }
 ```
 
-## Install
+## Installation
+
+```bash
+pip install commit-check-mcp
+```
+
+This installs the `commit-check-mcp` CLI entrypoint.
+
+For local development from this repository:
 
 ```bash
 pip install -e .
 ```
 
-## Run
+## Use With An MCP Client
+
+This server runs over stdio, so it is meant to be launched by an MCP client rather than used as a long-running HTTP service.
+
+Generic MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "commit-check-mcp"
+    }
+  }
+}
+```
+
+If the client needs the full path to the executable, first locate it:
+
+```bash
+which commit-check-mcp
+```
+
+Then use that absolute path in the client config.
+
+Example using an absolute path:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "/absolute/path/to/commit-check-mcp"
+    }
+  }
+}
+```
+
+For local development from this repository, that absolute path may point to something like `.venv/bin/commit-check-mcp`.
+
+## Run Manually
 
 ```bash
 commit-check-mcp
 ```
 
-The server runs over stdio transport (recommended MCP default for local tool integrations).
+The server uses stdio transport, which is the recommended MCP default for local tool integrations.
+
+## Tool Usage
+
+After the client starts the server, it will expose these tools:
+
+- `server_health`: returns server, SDK, and dependency versions
+- `validate_commit_message(message, config?, repo_path?, config_path?)`
+- `validate_branch_name(branch?, config?, repo_path?, config_path?)`
+- `validate_author_info(author_name?, author_email?, config?, repo_path?, config_path?)`
+- `validate_commit_context(message?, branch?, author_name?, author_email?, config?, repo_path?, config_path?)`
+- `validate_repository_state(repo_path?, config?, config_path?, include_message?, include_branch?, include_author?)`
+- `describe_validation_rules(config?, repo_path?, config_path?)`
+
+The common optional arguments are:
+
+- `repo_path`: repository directory to validate against
+- `config_path`: explicit TOML config file; relative paths resolve from `repo_path`
+- `config`: ad-hoc config overrides merged on top of defaults and repo config
+
+## Common Examples
+
+Validate a commit message using repo-local rules:
+
+```json
+{
+  "message": "feat(api): add MCP validation tool",
+  "repo_path": "/path/to/repo"
+}
+```
+
+Validate the current repository branch using an explicit config file:
+
+```json
+{
+  "repo_path": "/path/to/repo",
+  "config_path": ".github/commit-check.toml"
+}
+```
+
+Validate the full repository state:
+
+```json
+{
+  "repo_path": "/path/to/repo",
+  "include_message": true,
+  "include_branch": true,
+  "include_author": true
+}
+```
+
+Inspect the final merged rules that will be applied:
+
+```json
+{
+  "repo_path": "/path/to/repo",
+  "config": {
+    "commit": {
+      "require_body": true
+    }
+  }
+}
+```
 
 ## Repository-Aware Validation
 
@@ -69,3 +179,10 @@ Example payload for a repository-wide validation:
   "include_author": true
 }
 ```
+
+Config precedence is:
+
+1. `commit-check` built-in defaults
+2. repository config loaded from `repo_path`
+3. `config_path` when explicitly provided
+4. inline `config` overrides passed to the tool
