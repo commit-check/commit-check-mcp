@@ -1,22 +1,14 @@
 name: PR Autolabeler
 
-on:
-  pull_request_target:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - edited
-
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
+on:
+  # pull_request event is required for autolabeler
+  pull_request:
+    types: [opened, reopened, synchronize]
+
 jobs:
-  labeler:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/labeler@v5
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          sync-labels: true
+  draft-release:
+    uses: commit-check/.github/.github/workflows/pr-labeler.yml@main
