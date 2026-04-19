@@ -13,6 +13,10 @@ jobs:
   build:
     name: Build distributions
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
     outputs:
       artifact-name: python-package-distributions
     steps:
