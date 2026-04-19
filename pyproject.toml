@@ -1,10 +1,9 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "commit-check-mcp"
-version = "0.1.0"
 description = "MCP server exposing commit-check validation tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +15,7 @@ dependencies = [
   "commit-check>=2.5.0,<3",
   "mcp>=1.27.0,<2"
 ]
+dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
@@ -30,6 +30,11 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"
+fallback_version = "0.0.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
