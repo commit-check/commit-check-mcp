@@ -14,7 +14,7 @@ from commit_check import __version__ as commit_check_version
 from commit_check.config_merger import deep_merge, get_default_config, load_toml_config
 from commit_check.engine import ValidationContext, ValidationEngine, ValidationResult
 from commit_check.rule_builder import RuleBuilder, ValidationRule
-from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES
+from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
 from mcp.server.fastmcp import FastMCP
 
 from . import __version__
@@ -22,8 +22,8 @@ from . import __version__
 mcp = FastMCP(
     "commit-check-mcp",
     instructions=(
-        "Use these tools to validate commit messages, branch names, and author metadata "
-        "with commit-check."
+        "Use these tools to validate commit messages, branch names, author metadata, "
+        "and push safety with commit-check."
     ),
 )
 
@@ -181,6 +181,28 @@ def _validate_branch(
         return _run_checks(
             ["branch", "merge_base"],
             ValidationContext(stdin_text=branch, config=cfg),
+            cfg,
+        )
+
+
+def _validate_push(
+    push_refs: str | None = None,
+    *,
+    config: dict[str, Any] | None = None,
+    repo_path: Path | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Validate push ref updates against commit-check force-push protection."""
+    cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
+    cfg.setdefault("push", {})["allow_force_push"] = False
+    with _working_directory(repo_path):
+        return _run_checks(
+            ["no_force_push"],
+            ValidationContext(
+                stdin_text=push_refs,
+                config=cfg,
+                push_upstream_fallback=push_refs is None,
+            ),
             cfg,
         )
 
@@ -374,6 +396,24 @@ def validate_author_info(
 
 
 @mcp.tool()
+def validate_push_safety(
+    push_refs: str | None = None,
+    config: dict[str, Any] | None = None,
+    repo_path: str | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Validate that a push is not a force push."""
+    normalized_push_refs = push_refs.strip() if isinstance(push_refs, str) else None
+    normalized_repo_path = _normalize_repo_path(repo_path)
+    return _validate_push(
+        normalized_push_refs,
+        config=_normalize_config(config),
+        repo_path=normalized_repo_path,
+        config_path=_normalize_config_path(config_path, normalized_repo_path),
+    )
+
+
+@mcp.tool()
 def validate_commit_context(
     message: str | None = None,
     branch: str | None = None,
@@ -423,9 +463,10 @@ def validate_repository_state(
     include_message: bool = True,
     include_branch: bool = True,
     include_author: bool = True,
+    include_push: bool = False,
 ) -> dict[str, Any]:
-    """Validate the latest commit, current branch, and git author state of a repository."""
-    if not any([include_message, include_branch, include_author]):
+    """Validate the latest commit, branch, author, and optional push safety state."""
+    if not any([include_message, include_branch, include_author, include_push]):
         raise ValueError("At least one validation target must be enabled")
 
     normalized_repo_path = _normalize_repo_path(repo_path)
@@ -461,6 +502,15 @@ def validate_repository_state(
                 config_path=normalized_config_path,
             )["checks"]
         )
+    if include_push:
+        checks.extend(
+            _validate_push(
+                None,
+                config=normalized_config,
+                repo_path=normalized_repo_path,
+                config_path=normalized_config_path,
+            )["checks"]
+        )
 
     return {
         "status": "fail" if any(c["status"] == "fail" for c in checks) else "pass",
@@ -489,7 +539,9 @@ def describe_validation_rules(
         "commit_check_version": commit_check_version,
         "config": merged_config,
         "supported_checks": list(
-            dict.fromkeys(entry.check for entry in COMMIT_RULES + BRANCH_RULES)
+            dict.fromkeys(
+                entry.check for entry in COMMIT_RULES + BRANCH_RULES + PUSH_RULES
+            )
         ),
         "enabled_rules": rules,
     }

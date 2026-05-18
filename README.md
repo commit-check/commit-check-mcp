@@ -8,7 +8,7 @@
 
 Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
 
-`commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, and repository state.
+`commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, push safety, and repository state.
 
 ## Features
 
@@ -17,9 +17,10 @@ This MCP server exposes commit-check validations as MCP tools:
 - `server_health` — returns server/sdk versions
 - `validate_commit_message` — validates a commit message
 - `validate_branch_name` — validates a branch name or the current repo branch
+- `validate_push_safety` — validates that a push is not a force push
 - `validate_author_info` — validates author name/email or the repo's git author config
 - `validate_commit_context` — runs combined checks in one call
-- `validate_repository_state` — validates latest commit, current branch, and author state for a repo
+- `validate_repository_state` — validates latest commit, current branch, author state, and optional push safety for a repo
 - `describe_validation_rules` — returns the effective config and enabled rules after merging defaults and repo config
 
 All validation tools return the same structured commit-check result shape:
@@ -106,9 +107,10 @@ After the client starts the server, it will expose these tools:
 - `server_health`: returns server, SDK, and dependency versions
 - `validate_commit_message(message, config?, repo_path?, config_path?)`
 - `validate_branch_name(branch?, config?, repo_path?, config_path?)`
+- `validate_push_safety(push_refs?, config?, repo_path?, config_path?)`
 - `validate_author_info(author_name?, author_email?, config?, repo_path?, config_path?)`
 - `validate_commit_context(message?, branch?, author_name?, author_email?, config?, repo_path?, config_path?)`
-- `validate_repository_state(repo_path?, config?, config_path?, include_message?, include_branch?, include_author?)`
+- `validate_repository_state(repo_path?, config?, config_path?, include_message?, include_branch?, include_author?, include_push?)`
 - `describe_validation_rules(config?, repo_path?, config_path?)`
 
 The common optional arguments are:
@@ -148,6 +150,15 @@ Validate the full repository state:
 }
 ```
 
+Validate push safety from git pre-push hook ref metadata:
+
+```json
+{
+  "repo_path": "/path/to/repo",
+  "push_refs": "refs/heads/main abc123 refs/heads/main def456"
+}
+```
+
 Inspect the final merged rules that will be applied:
 
 ```json
@@ -173,6 +184,7 @@ Typical patterns:
 
 - Validate an explicit message with a repository's rules
 - Validate the current repository state without passing message/branch/author values manually
+- Validate push safety using pre-push ref metadata, or check the current branch against its upstream
 - Inspect which rules are actually enabled after config merging
 
 Example payload for a repository-wide validation:
@@ -182,7 +194,8 @@ Example payload for a repository-wide validation:
   "repo_path": "/path/to/repo",
   "include_message": true,
   "include_branch": true,
-  "include_author": true
+  "include_author": true,
+  "include_push": true
 }
 ```
 

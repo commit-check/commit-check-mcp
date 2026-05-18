@@ -148,14 +148,14 @@ wheels = [
 
 [[package]]
 name = "commit-check"
-version = "2.5.0"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/db/20f453073888cdf36ce74ee787777d6776db0ec8f568d62d666f3460f4f5/commit_check-2.5.0-py3-none-any.whl", hash = "sha256:c5f1f3b51f865fdb95285852496ee2ca5f1f16ae81b8935eba24af7f0d358b3a", size = 26903, upload-time = "2026-04-02T22:34:03.171Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/35/fb399f9f385964cacc469cb54fd8bae13bedb3a18ae61bd29ddd439884b8/commit_check-2.7.0-py3-none-any.whl", hash = "sha256:c986a871b6a4e4ddbbec3abf947716dabf4dc9a3cb6ff6d9c78c67cb525fa109", size = 36763, upload-time = "2026-05-16T00:10:54.445Z" },
 ]
 
 [[package]]
@@ -174,7 +174,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "commit-check", specifier = ">=2.5.0,<3" },
+    { name = "commit-check", specifier = ">=2.7.0,<3" },
     { name = "mcp", specifier = ">=1.27.0,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.0,<10" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0,<7" },
