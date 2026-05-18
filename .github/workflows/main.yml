@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: commit-check/commit-check-mcp
@@ -65,7 +65,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
