@@ -50,6 +50,83 @@ def test_validate_commit_context_requires_at_least_one_field() -> None:
         server.validate_commit_context()
 
 
+def test_validate_push_safety_forwards_normalized_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_validate_push(
+        push_refs: str | None,
+        *,
+        config: dict | None,
+        repo_path: Path | None,
+        config_path: str | None,
+    ):
+        captured["push_refs"] = push_refs
+        captured["config"] = config
+        captured["repo_path"] = repo_path
+        captured["config_path"] = config_path
+        return {"status": "pass", "checks": []}
+
+    monkeypatch.setattr(server, "_validate_push", fake_validate_push)
+
+    result = server.validate_push_safety(
+        " refs/heads/main abc refs/heads/main def ",
+        {"push": {"allow_force_push": True}},
+        repo_path=".",
+    )
+
+    assert result["status"] == "pass"
+    assert captured == {
+        "push_refs": "refs/heads/main abc refs/heads/main def",
+        "config": {"push": {"allow_force_push": True}},
+        "repo_path": Path.cwd().resolve(),
+        "config_path": None,
+    }
+
+
+def test_validate_push_forces_no_force_push_rule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def fake_run_checks(check_names, context, config):
+        captured.append(
+            {
+                "check_names": check_names,
+                "stdin_text": context.stdin_text,
+                "push_upstream_fallback": context.push_upstream_fallback,
+                "allow_force_push": config["push"]["allow_force_push"],
+            }
+        )
+        return {"status": "pass", "checks": []}
+
+    monkeypatch.setattr(server, "_run_checks", fake_run_checks)
+
+    result = server._validate_push(None, config={"push": {"allow_force_push": True}})
+    empty_refs_result = server._validate_push(
+        "",
+        config={"push": {"allow_force_push": True}},
+    )
+
+    assert result["status"] == "pass"
+    assert empty_refs_result["status"] == "pass"
+    assert captured == [
+        {
+            "check_names": ["no_force_push"],
+            "stdin_text": None,
+            "push_upstream_fallback": True,
+            "allow_force_push": False,
+        },
+        {
+            "check_names": ["no_force_push"],
+            "stdin_text": "",
+            "push_upstream_fallback": False,
+            "allow_force_push": False,
+        },
+    ]
+
+
 def test_validate_author_info_forwards_normalized_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -132,6 +209,7 @@ def test_validate_repository_state_requires_one_enabled_target() -> None:
             include_message=False,
             include_branch=False,
             include_author=False,
+            include_push=False,
         )
 
 
@@ -158,16 +236,31 @@ def test_validate_repository_state_combines_requested_checks(
         assert branch is None
         return {"status": "pass", "checks": [{"check": "branch", "status": "pass"}]}
 
+    def fake_validate_push(
+        push_refs: str | None,
+        *,
+        config: dict | None,
+        repo_path: Path | None,
+        config_path: str | None,
+    ):
+        assert push_refs is None
+        return {
+            "status": "pass",
+            "checks": [{"check": "no_force_push", "status": "pass"}],
+        }
+
     monkeypatch.setattr(server, "_validate_message", fake_validate_message)
     monkeypatch.setattr(server, "_validate_branch", fake_validate_branch)
+    monkeypatch.setattr(server, "_validate_push", fake_validate_push)
 
-    result = server.validate_repository_state(include_author=False)
+    result = server.validate_repository_state(include_author=False, include_push=True)
 
     assert result == {
         "status": "pass",
         "checks": [
             {"check": "message", "status": "pass"},
             {"check": "branch", "status": "pass"},
+            {"check": "no_force_push", "status": "pass"},
         ],
     }
 
@@ -192,5 +285,6 @@ allow_branch_names = ["develop"]
     assert result["config"]["commit"]["require_body"] is True
     assert result["config"]["branch"]["allow_branch_names"] == ["develop"]
     assert "message" in result["supported_checks"]
+    assert "no_force_push" in result["supported_checks"]
     assert result["supported_checks"].count("ignore_authors") == 1
     assert any(rule["check"] == "require_body" for rule in result["enabled_rules"])
