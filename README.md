@@ -5,10 +5,34 @@
 [![Build](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml/badge.svg)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
 [![Coverage](https://codecov.io/gh/commit-check/commit-check-mcp/graph/badge.svg)](https://codecov.io/gh/commit-check/commit-check-mcp)
 [![MCP server](https://img.shields.io/badge/MCP-server-0A7B83)](https://modelcontextprotocol.io/)
+[![Smithery](https://img.shields.io/badge/Smithery-MCP%20Server-8B5CF6)](https://smithery.ai)
 
-Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
+> **AI agent-friendly commit validation via MCP.** Built for AI coding agents (Claude Code, Cursor, Copilot, etc.) — not just human CI pipelines.
 
-`commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, push safety, and repository state.
+![Demo](demo/demo.gif)
+
+**commit-check-mcp** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes [commit-check](https://github.com/commit-check/commit-check) validations as structured tools. AI agents call these tools to validate commit messages, branch names, author info, push safety, and repository state — every tool returns pass/fail results with actionable suggestions.
+
+### Why this vs commitlint?
+
+| | commitlint | commit-check-mcp |
+|---|---|---|
+| **Target user** | Humans in CI pipelines | AI coding agents via MCP |
+| **Interface** | CLI + git hooks + config files | MCP tools (JSON in/out) |
+| **Output** | Terminal text, exit codes | Structured JSON with `.error` + `.suggest` fields |
+| **Agent awareness** | None | AGENTS.md instructions, tool descriptions optimized for LLM function calling |
+| **Integration** | husky + CI config | Drop-in MCP server config for any MCP client |
+| **Repository context** | Reads config from cwd | Explicit `repo_path` + `config_path` params — works across repos |
+
+## For AI Agents
+
+If you're an AI coding agent working in this repository, read **[AGENTS.md](AGENTS.md)** for instructions on how to use commit-check-mcp tools effectively.
+
+Key conventions for agents:
+- Always validate commit messages **before** writing them
+- Read `.suggest` on failures — it contains the exact fix
+- Call `describe_validation_rules` when entering a new repo
+- Use `validate_repository_state` for comprehensive checks in one call
 
 ## Features
 
@@ -91,6 +115,16 @@ Example using an absolute path:
 ```
 
 For local development from this repository, that absolute path may point to something like `.venv/bin/commit-check-mcp`.
+
+## Smithery / mcp.so
+
+commit-check-mcp is available on [Smithery](https://smithery.ai), the MCP server registry:
+
+```bash
+npx @smithery-ai/cli install commit-check-mcp
+```
+
+Or add it to your MCP client directly using the [Smithery config](smithery.yaml).
 
 ## Run Manually
 
@@ -205,3 +239,27 @@ Config precedence is:
 2. repository config loaded from `repo_path`
 3. `config_path` when explicitly provided
 4. inline `config` overrides passed to the tool
+
+## Development
+
+### Running tests
+
+```bash
+pip install -e .[dev]
+pytest -q --cov=src/commit_check_mcp
+```
+
+### Regenerating the demo GIF
+
+Requires [vhs](https://github.com/charmbracelet/vhs):
+
+```bash
+brew install vhs
+vhs demo/demo.tape --output demo/demo.gif
+```
+
+Edit `demo/demo-compact.py` to change the demo content.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

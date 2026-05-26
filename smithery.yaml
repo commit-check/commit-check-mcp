@@ -1,0 +1,40 @@
+# Smithery.ai MCP server configuration
+# https://smithery.ai
+
+name: commit-check-mcp
+description: |
+  AI agent-friendly commit validation via MCP. Validates commit messages
+  (Conventional Commits), branch names, author info, push safety, and
+  repository state. Designed for AI coding agents — each tool returns
+  structured pass/fail results with actionable suggestions.
+
+  Unlike commitlint (designed for human CI pipelines), commit-check-mcp
+  is built for the MCP tool ecosystem: structured JSON output, agent-readable
+  error messages with fix suggestions, and repository-aware validation
+  that reads your project's cchk.toml config.
+
+repository: https://github.com/commit-check/commit-check-mcp
+homepage: https://github.com/commit-check/commit-check-mcp#readme
+package:
+  registry: pypi
+  name: commit-check-mcp
+
+# Server launch configuration for Smithery
+server:
+  command: commit-check-mcp
+  transport: stdio
+
+# MCP server metadata
+capabilities:
+  tools: true
+  resources: false
+  prompts: false
+
+tags:
+  - git
+  - commit
+  - conventional-commits
+  - validation
+  - developer-tools
+  - ci-cd
+  - ai-agent
