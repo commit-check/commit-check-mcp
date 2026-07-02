@@ -1,10 +1,14 @@
 # commit-check-mcp
 
+<!-- mcp-name: io.github.commit-check/commit-check-mcp -->
+
 [![PyPI version](https://img.shields.io/pypi/v/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
 [![Build](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml/badge.svg)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
 [![Coverage](https://codecov.io/gh/commit-check/commit-check-mcp/graph/badge.svg)](https://codecov.io/gh/commit-check/commit-check-mcp)
 [![MCP server](https://img.shields.io/badge/MCP-server-0A7B83)](https://modelcontextprotocol.io/)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.commit--check/commit--check--mcp-7B3F00)](https://registry.modelcontextprotocol.io/)
+[![Glama](https://img.shields.io/badge/Glama-commit--check--mcp-blue)](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp)
 
 Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
 
@@ -58,44 +62,174 @@ pip install -e .
 
 This server runs over stdio, so it is meant to be launched by an MCP client rather than used as a long-running HTTP service.
 
-Generic MCP client config:
+With `uvx` (recommended — no install needed):
+
+```bash
+# Run once, no pip install required
+uvx commit-check-mcp
+```
+
+> **Tip**: If `uv` is not installed, get it via `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+
+---
+
+### Claude Desktop
 
 ```json
 {
   "mcpServers": {
     "commit-check": {
-      "command": "commit-check-mcp"
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
     }
   }
 }
 ```
 
-If the client needs the full path to the executable, first locate it:
+### Claude Code CLI
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+Add to your `~/.claude/settings.json` or project-level `.claude/settings.local.json`.
+
+### Cursor
+
+In Cursor, go to **Settings → Cursor Settings → MCP → Add new MCP server** and paste:
+
+| Field | Value |
+|---|---|
+| **Name** | `commit-check` |
+| **Type** | `command` |
+| **Command** | `uvx commit-check-mcp` |
+
+Or add to your project's `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to your `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+### Cline (VS Code)
+
+Add a new MCP server in the Cline extension settings:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+### Continue.dev (VS Code / JetBrains)
+
+Add to your `~/.continue/config.json`:
+
+```json
+{
+  "experimental": {
+    "mcpServers": {
+      "commit-check": {
+        "command": "uvx",
+        "args": ["commit-check-mcp"]
+      }
+    }
+  }
+}
+```
+
+### Roo Code
+
+Add to your Roo Code MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+### Zed
+
+Add to your `~/.config/zed/settings.json`:
+
+```json
+{
+  "mcp_servers": {
+    "commit-check": {
+      "command": "uvx",
+      "args": ["commit-check-mcp"]
+    }
+  }
+}
+```
+
+### Generic / Any MCP Client
+
+If your client does not support `uvx`, use `pip` and the direct path:
 
 ```bash
+pip install commit-check-mcp
 which commit-check-mcp
 ```
 
-Then use that absolute path in the client config.
-
-Example using an absolute path:
+Then use the absolute path in your config:
 
 ```json
 {
   "mcpServers": {
     "commit-check": {
-      "command": "/absolute/path/to/commit-check-mcp"
+      "command": "/path/to/commit-check-mcp"
     }
   }
 }
 ```
-
-For local development from this repository, that absolute path may point to something like `.venv/bin/commit-check-mcp`.
 
 ## Run Manually
 
 ```bash
+# If installed via pip
 commit-check-mcp
+
+# Or via uvx (no install needed)
+uvx commit-check-mcp
 ```
 
 The server uses stdio transport, which is the recommended MCP default for local tool integrations.
@@ -205,3 +339,16 @@ Config precedence is:
 2. repository config loaded from `repo_path`
 3. `config_path` when explicitly provided
 4. inline `config` overrides passed to the tool
+
+## Published On
+
+| Directory | Link |
+|---|---|
+| **Official MCP Registry** | [`io.github.commit-check/commit-check-mcp`](https://registry.modelcontextprotocol.io/) |
+| **Glama.ai** | [`github/commit-check/commit-check-mcp`](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp) |
+| **PyPI** | [`commit-check-mcp`](https://pypi.org/project/commit-check-mcp/) |
+
+To also add this server to your preferred directory, open a pull request at:
+
+- [punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers) — community-maintained list
+- [Smithery.ai](https://smithery.ai/) — hosted MCP server registry

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.commit-check/commit-check-mcp",
+  "title": "commit-check MCP",
+  "description": "Validate commit messages, branch names, author info, push safety, and repository state with commit-check rules.",
+  "version": "0.1.4",
+  "repository": {
+    "url": "https://github.com/commit-check/commit-check-mcp",
+    "source": "github"
+  },
+  "categories": [
+    "developer-tools",
+    "version-control"
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "commit-check-mcp",
+      "version": "0.1.4",
+      "transport": {
+        "type": "stdio",
+        "runtimeHint": "uvx commit-check-mcp"
+      }
+    }
+  ],
+  "tools": [
+    "server_health",
+    "validate_commit_message",
+    "validate_branch_name",
+    "validate_push_safety",
+    "validate_author_info",
+    "validate_commit_context",
+    "validate_repository_state",
+    "describe_validation_rules"
+  ]
+}
