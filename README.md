@@ -1,6 +1,6 @@
 # commit-check-mcp
 
-<!-- mcp-name: io.github.commit-check/commit-check-mcp -->
+mcp-name: io.github.commit-check/commit-check-mcp
 
 [![PyPI version](https://img.shields.io/pypi/v/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
