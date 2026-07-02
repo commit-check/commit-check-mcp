@@ -7,7 +7,7 @@ mcp-name: io.github.commit-check/commit-check-mcp
 [![Build](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml/badge.svg)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
 [![Coverage](https://codecov.io/gh/commit-check/commit-check-mcp/graph/badge.svg)](https://codecov.io/gh/commit-check/commit-check-mcp)
 [![MCP server](https://img.shields.io/badge/MCP-server-0A7B83)](https://modelcontextprotocol.io/)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.commit--check/commit--check--mcp-7B3F00)](https://registry.modelcontextprotocol.io/)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.commit--check/commit--check--mcp-7B3F00)](https://registry.modelcontextprotocol.io/?q=commit-check-mcp)
 [![Glama](https://img.shields.io/badge/Glama-commit--check--mcp-blue)](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp)
 
 Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
