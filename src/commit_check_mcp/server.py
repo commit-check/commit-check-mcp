@@ -320,7 +320,7 @@ def _validate_all(
 
 @mcp.tool()
 def server_health() -> dict[str, str]:
-    """Return server and dependency versions."""
+    """Return server and dependency versions. Read-only, no side effects. Returns dict with server name, server version, commit-check version, and MCP SDK version. Useful as a first call to verify the server is running and check version compatibility."""
     return {
         "server": "commit-check-mcp",
         "server_version": __version__,
@@ -336,7 +336,16 @@ def validate_commit_message(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate a commit message against commit-check rules."""
+    """Validate a commit message against commit-check rules. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and a list of per-check results. Each check includes the check name, status, value, error message (on failure), and suggestion (on failure).
+
+    Use this tool when you have a specific commit message string to validate. For batch validation of message, branch, and author together, use validate_commit_context instead.
+
+    Parameters:
+    - message (required): The commit message text to validate.
+    - config (optional): Inline JSON config overrides on top of any loaded config file.
+    - repo_path (optional): Path to the git repository for repo-relative config loading.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     if not isinstance(message, str) or not message.strip():
         raise ValueError("message must be a non-empty string")
     normalized_repo_path = _normalize_repo_path(repo_path)
@@ -355,7 +364,16 @@ def validate_branch_name(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate branch naming conventions with commit-check."""
+    """Validate branch naming conventions with commit-check. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and per-check results (check name, status, value, error, suggest).
+
+    Use this when you need to verify a branch name follows configured convention rules (e.g., feature/*, bugfix/*). For combined message+branch+author validation, use validate_commit_context.
+
+    Parameters:
+    - branch (optional): The branch name to validate. If omitted, detected from the current repo.
+    - config (optional): Inline JSON config overrides.
+    - repo_path (optional): Path to the git repository.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     normalized_branch = branch.strip() if isinstance(branch, str) else None
     if isinstance(branch, str) and not normalized_branch:
         raise ValueError("branch cannot be empty when provided")
@@ -376,7 +394,17 @@ def validate_author_info(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate commit author name and/or email with commit-check."""
+    """Validate commit author name and/or email with commit-check. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest).
+
+    Use this when you need to verify author metadata against configured rules (e.g., allowed email domains, name patterns). When both name and email are provided, both are validated. If neither is provided, both are checked against repo context. For combined validation, use validate_commit_context.
+
+    Parameters:
+    - author_name (optional): The author name to validate.
+    - author_email (optional): The author email to validate.
+    - config (optional): Inline JSON config overrides.
+    - repo_path (optional): Path to the git repository.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     normalized_name = author_name.strip() if isinstance(author_name, str) else None
     normalized_email = author_email.strip() if isinstance(author_email, str) else None
 
@@ -402,7 +430,16 @@ def validate_push_safety(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate that a push is not a force push."""
+    """Validate that a push is not a force push. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest). By default, force push is rejected; configure via 'push.allow_force_push' in config.
+
+    Use this before performing a git push to ensure force-push protection rules are satisfied. Only validates the no_force_push rule. Use validate_commit_context for combined checks.
+
+    Parameters:
+    - push_refs (optional): The push ref specification to validate. If omitted, checks upstream fallback state.
+    - config (optional): Inline JSON config overrides.
+    - repo_path (optional): Path to the git repository.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     normalized_push_refs = push_refs.strip() if isinstance(push_refs, str) else None
     normalized_repo_path = _normalize_repo_path(repo_path)
     return _validate_push(
@@ -423,7 +460,19 @@ def validate_commit_context(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Run combined commit-check validations in one call."""
+    """Run combined commit-check validations for message, branch, and/or author in one call. Read-only validation. Returns a structured result with overall status and a unified list of per-check results (check name, status, value, error, suggest).
+
+    Use this when you need to validate multiple commit aspects simultaneously in a single call. At least one of message, branch, author_name, or author_email must be provided. For individual aspects, use the specific validate_commit_message, validate_branch_name, or validate_author_info tools.
+
+    Parameters:
+    - message (optional): Commit message text to validate.
+    - branch (optional): Branch name to validate.
+    - author_name (optional): Author name to validate.
+    - author_email (optional): Author email to validate.
+    - config (optional): Inline JSON config overrides on top of any loaded config file.
+    - repo_path (optional): Path to the git repository for repo-relative config loading.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     normalized_message = message.strip() if isinstance(message, str) else None
     normalized_branch = branch.strip() if isinstance(branch, str) else None
     normalized_name = author_name.strip() if isinstance(author_name, str) else None
@@ -465,7 +514,19 @@ def validate_repository_state(
     include_author: bool = True,
     include_push: bool = False,
 ) -> dict[str, Any]:
-    """Validate the latest commit, branch, author, and optional push safety state."""
+    """Validate the current repository state including latest commit message, active branch, author metadata, and optional push safety. Read-only validation. Reads git data (message, branch, author) from the local repository. Returns a structured result with overall status and per-check results.
+
+    Use this to validate the entire state of a local git repository in one call — ideal for pre-commit or CI hooks. Controls which checks run via boolean include_* flags. For validating arbitrary (non-repo) values, use validate_commit_context or individual validation tools instead.
+
+    Parameters:
+    - repo_path (optional): Path to the git repository. If omitted, uses current working directory.
+    - config (optional): Inline JSON config overrides on top of any loaded config file.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    - include_message (optional, default true): Whether to validate the latest commit message.
+    - include_branch (optional, default true): Whether to validate the current branch name.
+    - include_author (optional, default true): Whether to validate the latest commit author.
+    - include_push (optional, default false): Whether to validate push safety.
+    """
     if not any([include_message, include_branch, include_author, include_push]):
         raise ValueError("At least one validation target must be enabled")
 
@@ -524,7 +585,15 @@ def describe_validation_rules(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Return enabled commit-check rules after merging defaults, repo config, and overrides."""
+    """Return enabled commit-check rules after merging defaults, repo config, and inline overrides. Read-only, no side effects. Returns a dict with commit_check_version, the full merged config, supported check types, and enabled rules (each with check name, config, and pattern details).
+
+    Use this to inspect which validation rules are currently active before running any validation. Helps debug rule configuration and check which checks will be applied.
+
+    Parameters:
+    - config (optional): Inline JSON config overrides on top of any loaded config file.
+    - repo_path (optional): Path to the git repository for repo-relative config loading.
+    - config_path (optional): Path to a custom commit-check TOML config file.
+    """
     normalized_repo_path = _normalize_repo_path(repo_path)
     normalized_config = _normalize_config(config)
     normalized_config_path = _normalize_config_path(config_path, normalized_repo_path)
