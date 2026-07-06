@@ -27,6 +27,12 @@ This MCP server exposes commit-check validations as MCP tools:
 - `validate_repository_state` — validates latest commit, current branch, author state, and optional push safety for a repo
 - `describe_validation_rules` — returns the effective config and enabled rules after merging defaults and repo config
 
+> **v2.11.0+**: AI attribution governance is now supported. Set `[commit] ai_attribution = "forbid"`
+> in your commit-check config to reject commits co-authored by AI coding agents
+> (Claude Code, GitHub Copilot, Cursor, etc.). See the
+> [commit-check docs](https://github.com/commit-check/commit-check?tab=readme-ov-file#ai-attribution-governance)
+> for details.
+
 All validation tools return the same structured commit-check result shape:
 
 ```json
