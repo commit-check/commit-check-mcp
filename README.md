@@ -344,11 +344,6 @@ Config precedence is:
 
 | Directory | Link |
 |---|---|
-| **Official MCP Registry** | [`io.github.commit-check/commit-check-mcp`](https://registry.modelcontextprotocol.io/) |
+| **Official MCP Registry** | [`io.github.commit-check/commit-check-mcp`](https://registry.modelcontextprotocol.io/?q=commit-check-mcp) |
 | **Glama.ai** | [`github/commit-check/commit-check-mcp`](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp) |
 | **PyPI** | [`commit-check-mcp`](https://pypi.org/project/commit-check-mcp/) |
-
-To also add this server to your preferred directory, open a pull request at:
-
-- [punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers) — community-maintained list
-- [Smithery.ai](https://smithery.ai/) — hosted MCP server registry
