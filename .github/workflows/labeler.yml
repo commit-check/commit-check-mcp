@@ -11,5 +11,6 @@ jobs:
   draft-release:
     permissions:
       pull-requests: write
+      issues: write
       contents: read
     uses: commit-check/.github/.github/workflows/pr-labeler.yml@main
