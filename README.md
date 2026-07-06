@@ -345,3 +345,9 @@ Config precedence is:
 | **Official MCP Registry** | [`io.github.commit-check/commit-check-mcp`](https://registry.modelcontextprotocol.io/?q=commit-check-mcp) |
 | **Glama.ai** | [`github/commit-check/commit-check-mcp`](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp) |
 | **PyPI** | [`commit-check-mcp`](https://pypi.org/project/commit-check-mcp/) |
+
+---
+
+<!-- Required by MCP Registry for PyPI package ownership validation -->
+<!-- https://registry.modelcontextprotocol.io -->
+<sub>mcp-name: io.github.commit-check/commit-check-mcp</sub>
