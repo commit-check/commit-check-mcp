@@ -148,6 +148,42 @@ class TestValidateMessage:
         )
         assert result["status"] == "fail"
 
+    def test_message_pattern_overrides_conventional_commits(self) -> None:
+        """When message_pattern is set via config, it takes precedence."""
+        result = server._validate_message(
+            "PROJ-123: add new feature",
+            config={
+                "commit": {
+                    "message_pattern": r"^PROJ-\d+: .+",
+                    "conventional_commits": False,
+                    "allow_merge_commits": True,
+                    "allow_revert_commits": True,
+                    "allow_empty_commits": True,
+                    "allow_fixup_commits": True,
+                    "allow_wip_commits": True,
+                }
+            },
+        )
+        assert result["status"] == "pass"
+
+    def test_message_pattern_fails_on_mismatch(self) -> None:
+        """A message that doesn't match message_pattern should fail."""
+        result = server._validate_message(
+            "fix: some random change",
+            config={
+                "commit": {
+                    "message_pattern": r"^PROJ-\d+: .+",
+                    "conventional_commits": False,
+                    "allow_merge_commits": True,
+                    "allow_revert_commits": True,
+                    "allow_empty_commits": True,
+                    "allow_fixup_commits": True,
+                    "allow_wip_commits": True,
+                }
+            },
+        )
+        assert result["status"] == "fail"
+
 
 # ---------------------------------------------------------------------------
 # _validate_branch  (real engine call)
