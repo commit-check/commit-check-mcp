@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from contextlib import redirect_stderr, redirect_stdout
 from importlib.metadata import version
-import io
 from pathlib import Path
 import os
 from typing import Any
 
 from commit_check import __version__ as commit_check_version
 from commit_check.config_merger import deep_merge, get_default_config, load_toml_config
-from commit_check.engine import ValidationContext, ValidationEngine, ValidationResult
+from commit_check.engine import ValidationContext, ValidationEngine, CheckOutcome
 from commit_check.rule_builder import RuleBuilder, ValidationRule
 from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
 from mcp.server.fastmcp import FastMCP
@@ -114,25 +112,17 @@ def _run_checks(
     context: ValidationContext,
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Run commit-check rules and always return structured per-check results."""
+    """Run commit-check rules and return structured per-check results.
+
+    Uses ValidationEngine.validate_all_detailed() which internally
+    suppresses terminal output and collects structured failure details.
+    """
     rules = RuleBuilder(config).build_all_rules()
     filtered: list[ValidationRule] = [r for r in rules if r.check in check_names]
 
-    checks: list[dict[str, Any]] = []
-    for rule in filtered:
-        with io.StringIO() as _out, io.StringIO() as _err:
-            with redirect_stdout(_out), redirect_stderr(_err):
-                status = ValidationEngine([rule]).validate_all(context)
-        passed = status == ValidationResult.PASS
-        checks.append(
-            {
-                "check": rule.check,
-                "status": "pass" if passed else "fail",
-                "value": context.stdin_text or "",
-                "error": "" if passed else (rule.error or ""),
-                "suggest": "" if passed else (rule.suggest or ""),
-            }
-        )
+    engine = ValidationEngine(filtered)
+    outcomes: list[CheckOutcome] = engine.validate_all_detailed(context)
+    checks = [o.to_dict() for o in outcomes]
 
     overall = "fail" if any(c["status"] == "fail" for c in checks) else "pass"
     return {"status": overall, "checks": checks}
