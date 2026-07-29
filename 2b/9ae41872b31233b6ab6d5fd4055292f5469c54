@@ -1,0 +1,20 @@
+src/commit_check_mcp/server.py
+  s_242699324a30e5::t_01352a49f6ed2c 13
+  s_242699324a30e5::t_3fc45273f527e1 115-119,123-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2b9ae41872b31233b6ab6d5fd4055292f5469c54",
+  "prompts": {},
+  "sessions": {
+    "s_242699324a30e5": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019faf83-da50-71e9-91d4-5def1797fab0",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
