@@ -13,11 +13,11 @@ from commit_check.config_merger import deep_merge, get_default_config, load_toml
 from commit_check.engine import ValidationContext, ValidationEngine, CheckOutcome
 from commit_check.rule_builder import RuleBuilder, ValidationRule
 from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from . import __version__
 
-mcp = FastMCP(
+mcp = MCPServer(
     "commit-check-mcp",
     instructions=(
         "Use these tools to validate commit messages, branch names, author metadata, "
