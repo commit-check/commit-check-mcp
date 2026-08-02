@@ -1,0 +1,23 @@
+pyproject.toml
+  s_0cf101ade936b3::t_e7a3e0905a18e3 29
+src/commit_check_mcp/server.py
+  s_0cf101ade936b3::t_aff01f36543fa3 16,20
+uv.lock
+  s_0cf101ade936b3::t_12e67e57ac3fca 4-7,146,153,172-173,175,362,379-380,384,386,388,392-393,397,399-400,402,404,409,411,413,454,458,460-461,472-497,499,1029-1037
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "e150df6e91972184da6c6bedfab64ba1336fb1ba",
+  "prompts": {},
+  "sessions": {
+    "s_0cf101ade936b3": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019fbec1-f685-7154-9aa2-23ec7cd7d7ed",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
