@@ -621,10 +621,6 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
 
     parser = argparse.ArgumentParser(prog="commit-check-mcp")
-    try:
-        default_port = int(os.environ.get("MCP_PORT", "8000"))
-    except ValueError:
-        parser.error(f"MCP_PORT must be an integer, got {os.environ['MCP_PORT']!r}")
     parser.add_argument(
         "--transport",
         choices=["stdio", "http"],
@@ -636,11 +632,28 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("MCP_HOST", "127.0.0.1"),
         help="bind address for --transport http (default 127.0.0.1; use 0.0.0.0 in containers)",
     )
+    # A string default is converted through type=int only when --port is
+    # absent, so an invalid inherited MCP_PORT still fails loudly on its own
+    # but cannot veto an explicit, valid --port.
     parser.add_argument(
         "--port",
         type=int,
-        default=default_port,
+        default=os.environ.get("MCP_PORT", "8000"),
         help="port for --transport http (default 8000)",
+    )
+    parser.add_argument(
+        "--allowed-hosts",
+        default=os.environ.get("MCP_ALLOWED_HOSTS", ""),
+        help=(
+            "comma-separated Host header allowlist for --transport http"
+            " (e.g. mcp.example.com,mcp.example.com:443); enables strict"
+            " Host/Origin validation against DNS rebinding"
+        ),
+    )
+    parser.add_argument(
+        "--allowed-origins",
+        default=os.environ.get("MCP_ALLOWED_ORIGINS", ""),
+        help="comma-separated Origin header allowlist for --transport http",
     )
     args = parser.parse_args(argv)
 
@@ -654,13 +667,25 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     if args.transport == "http":
-        mcp.run(
-            transport="streamable-http",
-            host=args.host,
-            port=args.port,
-            stateless_http=True,
-            json_response=True,
-        )
+        http_kwargs: dict[str, Any] = {
+            "host": args.host,
+            "port": args.port,
+            "stateless_http": True,
+            "json_response": True,
+        }
+        allowed_hosts = [h.strip() for h in args.allowed_hosts.split(",") if h.strip()]
+        allowed_origins = [
+            o.strip() for o in args.allowed_origins.split(",") if o.strip()
+        ]
+        if allowed_hosts or allowed_origins:
+            from mcp.server.transport_security import TransportSecuritySettings
+
+            http_kwargs["transport_security"] = TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=allowed_hosts,
+                allowed_origins=allowed_origins,
+            )
+        mcp.run(transport="streamable-http", **http_kwargs)
     else:
         mcp.run(transport="stdio")
 

@@ -250,6 +250,21 @@ commit-check-mcp --transport http --host 0.0.0.0 --port 8080
 The same settings are available as environment variables for container
 images: `MCP_TRANSPORT=http`, `MCP_HOST`, and `MCP_PORT`.
 
+> [!IMPORTANT]
+> The server has no built-in authentication or TLS. The `0.0.0.0` bind is
+> meant for containers on a private network behind a TLS-terminating
+> reverse proxy — do not expose the port to the internet as-is. When the
+> server is reachable through a public hostname, restrict the `Host` and
+> `Origin` headers it accepts so DNS-rebinding protection stays strict:
+>
+> ```bash
+> commit-check-mcp --transport http --host 0.0.0.0 --port 8080 \
+>   --allowed-hosts mcp.example.com,mcp.example.com:443 \
+>   --allowed-origins https://app.example.com
+> ```
+>
+> (also available as `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`)
+
 Each request is self-contained — clients can `POST` a `tools/call` directly
 to `/mcp` without an `initialize` handshake or `Mcp-Session-Id` header:
 
@@ -257,16 +272,29 @@ to `/mcp` without an `initialize` handshake or `Mcp-Session-Id` header:
 curl -s -X POST http://127.0.0.1:8000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: validate_commit_message" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
     "method": "tools/call",
     "params": {
       "name": "validate_commit_message",
-      "arguments": {"message": "feat: add stateless http transport"}
+      "arguments": {"message": "feat: add stateless http transport"},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
     }
   }'
 ```
+
+The `Mcp-Method` and `Mcp-Name` headers let load balancers route on the
+call without parsing the body (SEP-2243). Declaring `MCP-Protocol-Version`
+commits the request to the 2026-07-28 format, which also requires the
+`_meta` envelope shown above — omit both to fall back to the SDK's
+backward-compatible minimal form.
 
 ## Tool Usage
 

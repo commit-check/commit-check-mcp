@@ -944,3 +944,44 @@ class TestMain:
         monkeypatch.setenv("MCP_PORT", "eight thousand")
         with pytest.raises(SystemExit):
             server.main([])
+
+    def test_cli_port_overrides_invalid_environment_port(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An invalid inherited MCP_PORT must not veto an explicit --port."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("MCP_PORT", "eight thousand")
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http", "--port", "9000"])
+        assert captured["port"] == 9000
+
+    def test_allowed_hosts_enable_transport_security(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(
+            [
+                "--transport",
+                "http",
+                "--allowed-hosts",
+                "mcp.example.com, mcp.example.com:443",
+                "--allowed-origins",
+                "https://app.example.com",
+            ]
+        )
+        security = captured["transport_security"]
+        assert security.enable_dns_rebinding_protection is True  # type: ignore[attr-defined]
+        assert security.allowed_hosts == [  # type: ignore[attr-defined]
+            "mcp.example.com",
+            "mcp.example.com:443",
+        ]
+        assert security.allowed_origins == ["https://app.example.com"]  # type: ignore[attr-defined]
+
+    def test_no_transport_security_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http"])
+        assert "transport_security" not in captured
