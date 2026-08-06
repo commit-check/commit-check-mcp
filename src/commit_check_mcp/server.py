@@ -608,9 +608,49 @@ def describe_validation_rules(
     }
 
 
-def main() -> None:
-    """Run commit-check MCP server via stdio transport."""
-    mcp.run(transport="stdio")
+def main(argv: list[str] | None = None) -> None:
+    """Run the commit-check MCP server.
+
+    Defaults to stdio for local MCP clients. ``--transport http`` serves
+    stateless Streamable HTTP per the 2026-07-28 MCP specification: every
+    tool here is a pure function of its inputs, so no request ever depends
+    on an earlier one and any instance behind a plain load balancer can
+    answer it. Statelessness is therefore not offered as a toggle — for
+    this server it is simply true.
+    """
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(prog="commit-check-mcp")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default=os.environ.get("MCP_TRANSPORT", "stdio"),
+        help="stdio for local clients (default); http for a stateless remote server",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("MCP_HOST", "127.0.0.1"),
+        help="bind address for --transport http (default 127.0.0.1; use 0.0.0.0 in containers)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("MCP_PORT", "8000")),
+        help="port for --transport http (default 8000)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.transport == "http":
+        mcp.run(
+            transport="streamable-http",
+            host=args.host,
+            port=args.port,
+            stateless_http=True,
+            json_response=True,
+        )
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":  # pragma: no cover

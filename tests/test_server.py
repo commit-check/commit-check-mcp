@@ -883,5 +883,44 @@ class TestMain:
             assert transport == "stdio"
 
         monkeypatch.setattr(server.mcp, "run", fake_run)
-        server.main()
+        server.main([])
         assert called
+
+    def test_http_transport_is_stateless(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--transport http must serve stateless Streamable HTTP.
+
+        stateless_http and json_response are what let any instance behind a
+        plain load balancer answer any request under the 2026-07-28 spec;
+        this pins them so a refactor cannot silently reintroduce sessions.
+        """
+        captured: dict[str, object] = {}
+
+        def fake_run(**kwargs: object) -> None:
+            captured.update(kwargs)
+
+        monkeypatch.setattr(server.mcp, "run", fake_run)
+        server.main(["--transport", "http", "--host", "0.0.0.0", "--port", "9000"])
+        assert captured == {
+            "transport": "streamable-http",
+            "host": "0.0.0.0",
+            "port": 9000,
+            "stateless_http": True,
+            "json_response": True,
+        }
+
+    def test_transport_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """MCP_TRANSPORT/MCP_HOST/MCP_PORT configure containers without argv."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("MCP_TRANSPORT", "http")
+        monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+        monkeypatch.setenv("MCP_PORT", "8080")
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main([])
+        assert captured["transport"] == "streamable-http"
+        assert captured["host"] == "0.0.0.0"
+        assert captured["port"] == 8080
+        assert captured["stateless_http"] is True
+
+    def test_rejects_unknown_transport(self) -> None:
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "sse"])

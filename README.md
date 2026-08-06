@@ -230,7 +230,43 @@ commit-check-mcp
 uvx commit-check-mcp
 ```
 
-The server uses stdio transport, which is the recommended MCP default for local tool integrations.
+The server uses stdio transport by default, which is the recommended MCP default for local tool integrations.
+
+## Run as a Stateless HTTP Server
+
+For remote or containerized deployments, the server can speak Streamable HTTP
+in the stateless mode introduced by the 2026-07-28 MCP specification. Every
+tool is a pure function of its inputs, so no session handshake is required and
+any instance behind a load balancer can answer any request:
+
+```bash
+# Serve on http://127.0.0.1:8000/mcp
+commit-check-mcp --transport http
+
+# Bind all interfaces on a custom port (e.g. inside a container)
+commit-check-mcp --transport http --host 0.0.0.0 --port 8080
+```
+
+The same settings are available as environment variables for container
+images: `MCP_TRANSPORT=http`, `MCP_HOST`, and `MCP_PORT`.
+
+Each request is self-contained — clients can `POST` a `tools/call` directly
+to `/mcp` without an `initialize` handshake or `Mcp-Session-Id` header:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "validate_commit_message",
+      "arguments": {"message": "feat: add stateless http transport"}
+    }
+  }'
+```
 
 ## Tool Usage
 
