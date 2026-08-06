@@ -58,7 +58,7 @@ pip install -e .
 
 ## Use With An MCP Client
 
-This server runs over stdio, so it is meant to be launched by an MCP client rather than used as a long-running HTTP service.
+By default this server runs over stdio and is launched by an MCP client. It can also run as a stateless Streamable HTTP service — see [Run as a Stateless HTTP Server](#run-as-a-stateless-http-server).
 
 With `uvx` (recommended — no install needed):
 

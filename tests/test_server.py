@@ -924,3 +924,23 @@ class TestMain:
     def test_rejects_unknown_transport(self) -> None:
         with pytest.raises(SystemExit):
             server.main(["--transport", "sse"])
+
+    def test_rejects_unknown_transport_from_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """argparse skips `choices` for env-supplied defaults; a typo in
+        MCP_TRANSPORT must fail loudly, not silently serve stdio in a
+        container that expects an HTTP listener."""
+        monkeypatch.setenv("MCP_TRANSPORT", "htpp")
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main([])
+
+    def test_rejects_non_integer_port_from_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MCP_PORT", "eight thousand")
+        with pytest.raises(SystemExit):
+            server.main([])

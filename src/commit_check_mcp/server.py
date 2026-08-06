@@ -619,9 +619,12 @@ def main(argv: list[str] | None = None) -> None:
     this server it is simply true.
     """
     import argparse
-    import os
 
     parser = argparse.ArgumentParser(prog="commit-check-mcp")
+    try:
+        default_port = int(os.environ.get("MCP_PORT", "8000"))
+    except ValueError:
+        parser.error(f"MCP_PORT must be an integer, got {os.environ['MCP_PORT']!r}")
     parser.add_argument(
         "--transport",
         choices=["stdio", "http"],
@@ -636,10 +639,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("MCP_PORT", "8000")),
+        default=default_port,
         help="port for --transport http (default 8000)",
     )
     args = parser.parse_args(argv)
+
+    # argparse does not check `choices` against env-supplied defaults, and a
+    # typo in MCP_TRANSPORT must not silently fall back to stdio inside a
+    # container that expects an HTTP listener.
+    if args.transport not in ("stdio", "http"):
+        parser.error(
+            f"argument --transport: invalid choice: {args.transport!r}"
+            " (choose from 'stdio', 'http')"
+        )
 
     if args.transport == "http":
         mcp.run(
