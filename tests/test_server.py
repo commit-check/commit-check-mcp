@@ -909,11 +909,11 @@ class TestMain:
         }
 
     def test_transport_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """MCP_TRANSPORT/MCP_HOST/MCP_PORT configure containers without argv."""
+        """COMMIT_CHECK_MCP_TRANSPORT/_HOST/_PORT configure containers without argv."""
         captured: dict[str, object] = {}
-        monkeypatch.setenv("MCP_TRANSPORT", "http")
-        monkeypatch.setenv("MCP_HOST", "0.0.0.0")
-        monkeypatch.setenv("MCP_PORT", "8080")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_TRANSPORT", "http")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_HOST", "0.0.0.0")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "8080")
         monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
         server.main([])
         assert captured["transport"] == "streamable-http"
@@ -929,9 +929,9 @@ class TestMain:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """argparse skips `choices` for env-supplied defaults; a typo in
-        MCP_TRANSPORT must fail loudly, not silently serve stdio in a
+        COMMIT_CHECK_MCP_TRANSPORT must fail loudly, not silently serve stdio in a
         container that expects an HTTP listener."""
-        monkeypatch.setenv("MCP_TRANSPORT", "htpp")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_TRANSPORT", "htpp")
         monkeypatch.setattr(
             server.mcp, "run", lambda **kw: pytest.fail("server must not start")
         )
@@ -941,16 +941,16 @@ class TestMain:
     def test_rejects_non_integer_port_from_environment(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("MCP_PORT", "eight thousand")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "eight thousand")
         with pytest.raises(SystemExit):
             server.main([])
 
     def test_cli_port_overrides_invalid_environment_port(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An invalid inherited MCP_PORT must not veto an explicit --port."""
+        """An invalid inherited COMMIT_CHECK_MCP_PORT must not veto an explicit --port."""
         captured: dict[str, object] = {}
-        monkeypatch.setenv("MCP_PORT", "eight thousand")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "eight thousand")
         monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
         server.main(["--transport", "http", "--port", "9000"])
         assert captured["port"] == 9000
@@ -985,3 +985,31 @@ class TestMain:
         monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
         server.main(["--transport", "http"])
         assert "transport_security" not in captured
+
+    def test_origins_without_hosts_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Origins-only would enable rebinding protection with an empty host
+        allowlist, which answers every request with 421 — verified against a
+        live server. Refuse to start rather than serve a dead endpoint."""
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(
+                ["--transport", "http", "--allowed-origins", "https://app.example.com"]
+            )
+
+    def test_unprefixed_env_vars_are_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bare MCP_TRANSPORT belongs to no particular server. Honouring it
+        would turn a stdio launch into an HTTP listener that never answers the
+        client's handshake."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("MCP_TRANSPORT", "http")
+        monkeypatch.setenv("MCP_PORT", "9999")
+        monkeypatch.delenv("COMMIT_CHECK_MCP_TRANSPORT", raising=False)
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main([])
+        assert captured == {"transport": "stdio"}

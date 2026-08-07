@@ -248,7 +248,10 @@ commit-check-mcp --transport http --host 0.0.0.0 --port 8080
 ```
 
 The same settings are available as environment variables for container
-images: `MCP_TRANSPORT=http`, `MCP_HOST`, and `MCP_PORT`.
+images: `COMMIT_CHECK_MCP_TRANSPORT=http`, `COMMIT_CHECK_MCP_HOST`, and
+`COMMIT_CHECK_MCP_PORT`. They are deliberately prefixed — an unprefixed
+`MCP_TRANSPORT` belongs to no particular server, and a stray value would
+turn a stdio launch into an HTTP listener that never answers its client.
 
 > [!IMPORTANT]
 > The server has no built-in authentication or TLS. The `0.0.0.0` bind is
@@ -263,7 +266,10 @@ images: `MCP_TRANSPORT=http`, `MCP_HOST`, and `MCP_PORT`.
 >   --allowed-origins https://app.example.com
 > ```
 >
-> (also available as `MCP_ALLOWED_HOSTS` / `MCP_ALLOWED_ORIGINS`)
+> (also available as `COMMIT_CHECK_MCP_ALLOWED_HOSTS` /
+> `COMMIT_CHECK_MCP_ALLOWED_ORIGINS`). `--allowed-origins` requires
+> `--allowed-hosts`: an empty host allowlist rejects every request with
+> 421, so the server refuses to start on that combination.
 
 Each request is self-contained — clients can `POST` a `tools/call` directly
 to `/mcp` without an `initialize` handshake or `Mcp-Session-Id` header:
