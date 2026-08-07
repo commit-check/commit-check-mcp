@@ -637,12 +637,23 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("COMMIT_CHECK_MCP_HOST", "127.0.0.1"),
         help="bind address for --transport http (default 127.0.0.1; use 0.0.0.0 in containers)",
     )
-    # A string default is converted through type=int only when --port is
-    # absent, so an invalid inherited port still fails loudly on its own but
+    def _port(value: str) -> int:
+        # Out of range, uvicorn dies deep in asyncio with a bare OverflowError;
+        # port 0 is worse, binding to an arbitrary free port so the server
+        # comes up "successfully" somewhere nothing can reach it.
+        port = int(value)
+        if not 1 <= port <= 65535:
+            raise argparse.ArgumentTypeError(
+                f"port must be between 1 and 65535, got {port}"
+            )
+        return port
+
+    # A string default is converted through the type function only when --port
+    # is absent, so an invalid inherited port still fails loudly on its own but
     # cannot veto an explicit, valid --port.
     parser.add_argument(
         "--port",
-        type=int,
+        type=_port,
         default=os.environ.get("COMMIT_CHECK_MCP_PORT", "8000"),
         help="port for --transport http (default 8000)",
     )

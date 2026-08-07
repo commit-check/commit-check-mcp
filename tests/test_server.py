@@ -986,6 +986,38 @@ class TestMain:
         server.main(["--transport", "http"])
         assert "transport_security" not in captured
 
+    @pytest.mark.parametrize("port", ["-1", "0", "65536", "99999"])
+    def test_rejects_out_of_range_port(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Out of range uvicorn dies with a bare OverflowError; port 0 binds to
+        an arbitrary free port and comes up where nothing can reach it."""
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "http", "--port", port])
+
+    @pytest.mark.parametrize("port", ["-1", "0", "65536"])
+    def test_rejects_out_of_range_port_from_environment(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", port)
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "http"])
+
+    @pytest.mark.parametrize("port", ["1", "8000", "65535"])
+    def test_accepts_boundary_ports(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http", "--port", port])
+        assert captured["port"] == int(port)
+
     def test_origins_without_hosts_is_rejected(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
