@@ -883,5 +883,165 @@ class TestMain:
             assert transport == "stdio"
 
         monkeypatch.setattr(server.mcp, "run", fake_run)
-        server.main()
+        server.main([])
         assert called
+
+    def test_http_transport_is_stateless(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--transport http must serve stateless Streamable HTTP.
+
+        stateless_http and json_response are what let any instance behind a
+        plain load balancer answer any request under the 2026-07-28 spec;
+        this pins them so a refactor cannot silently reintroduce sessions.
+        """
+        captured: dict[str, object] = {}
+
+        def fake_run(**kwargs: object) -> None:
+            captured.update(kwargs)
+
+        monkeypatch.setattr(server.mcp, "run", fake_run)
+        server.main(["--transport", "http", "--host", "0.0.0.0", "--port", "9000"])
+        assert captured == {
+            "transport": "streamable-http",
+            "host": "0.0.0.0",
+            "port": 9000,
+            "stateless_http": True,
+            "json_response": True,
+        }
+
+    def test_transport_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """COMMIT_CHECK_MCP_TRANSPORT/_HOST/_PORT configure containers without argv."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("COMMIT_CHECK_MCP_TRANSPORT", "http")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_HOST", "0.0.0.0")
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "8080")
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main([])
+        assert captured["transport"] == "streamable-http"
+        assert captured["host"] == "0.0.0.0"
+        assert captured["port"] == 8080
+        assert captured["stateless_http"] is True
+
+    def test_rejects_unknown_transport(self) -> None:
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "sse"])
+
+    def test_rejects_unknown_transport_from_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """argparse skips `choices` for env-supplied defaults; a typo in
+        COMMIT_CHECK_MCP_TRANSPORT must fail loudly, not silently serve stdio in a
+        container that expects an HTTP listener."""
+        monkeypatch.setenv("COMMIT_CHECK_MCP_TRANSPORT", "htpp")
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main([])
+
+    def test_rejects_non_integer_port_from_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "eight thousand")
+        with pytest.raises(SystemExit):
+            server.main([])
+
+    def test_cli_port_overrides_invalid_environment_port(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An invalid inherited COMMIT_CHECK_MCP_PORT must not veto an explicit --port."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", "eight thousand")
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http", "--port", "9000"])
+        assert captured["port"] == 9000
+
+    def test_allowed_hosts_enable_transport_security(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(
+            [
+                "--transport",
+                "http",
+                "--allowed-hosts",
+                "mcp.example.com, mcp.example.com:443",
+                "--allowed-origins",
+                "https://app.example.com",
+            ]
+        )
+        security = captured["transport_security"]
+        assert security.enable_dns_rebinding_protection is True  # type: ignore[attr-defined]
+        assert security.allowed_hosts == [  # type: ignore[attr-defined]
+            "mcp.example.com",
+            "mcp.example.com:443",
+        ]
+        assert security.allowed_origins == ["https://app.example.com"]  # type: ignore[attr-defined]
+
+    def test_no_transport_security_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http"])
+        assert "transport_security" not in captured
+
+    @pytest.mark.parametrize("port", ["-1", "0", "65536", "99999"])
+    def test_rejects_out_of_range_port(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Out of range uvicorn dies with a bare OverflowError; port 0 binds to
+        an arbitrary free port and comes up where nothing can reach it."""
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "http", "--port", port])
+
+    @pytest.mark.parametrize("port", ["-1", "0", "65536"])
+    def test_rejects_out_of_range_port_from_environment(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("COMMIT_CHECK_MCP_PORT", port)
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(["--transport", "http"])
+
+    @pytest.mark.parametrize("port", ["1", "8000", "65535"])
+    def test_accepts_boundary_ports(
+        self, port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main(["--transport", "http", "--port", port])
+        assert captured["port"] == int(port)
+
+    def test_origins_without_hosts_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Origins-only would enable rebinding protection with an empty host
+        allowlist, which answers every request with 421 — verified against a
+        live server. Refuse to start rather than serve a dead endpoint."""
+        monkeypatch.setattr(
+            server.mcp, "run", lambda **kw: pytest.fail("server must not start")
+        )
+        with pytest.raises(SystemExit):
+            server.main(
+                ["--transport", "http", "--allowed-origins", "https://app.example.com"]
+            )
+
+    def test_unprefixed_env_vars_are_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bare MCP_TRANSPORT belongs to no particular server. Honouring it
+        would turn a stdio launch into an HTTP listener that never answers the
+        client's handshake."""
+        captured: dict[str, object] = {}
+        monkeypatch.setenv("MCP_TRANSPORT", "http")
+        monkeypatch.setenv("MCP_PORT", "9999")
+        monkeypatch.delenv("COMMIT_CHECK_MCP_TRANSPORT", raising=False)
+        monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+        server.main([])
+        assert captured == {"transport": "stdio"}

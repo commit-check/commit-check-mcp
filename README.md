@@ -58,7 +58,7 @@ pip install -e .
 
 ## Use With An MCP Client
 
-This server runs over stdio, so it is meant to be launched by an MCP client rather than used as a long-running HTTP service.
+By default this server runs over stdio and is launched by an MCP client. It can also run as a stateless Streamable HTTP service — see [Run as a Stateless HTTP Server](#run-as-a-stateless-http-server).
 
 With `uvx` (recommended — no install needed):
 
@@ -230,7 +230,77 @@ commit-check-mcp
 uvx commit-check-mcp
 ```
 
-The server uses stdio transport, which is the recommended MCP default for local tool integrations.
+The server uses stdio transport by default, which is the recommended MCP default for local tool integrations.
+
+## Run as a Stateless HTTP Server
+
+For remote or containerized deployments, the server can speak Streamable HTTP
+in the stateless mode introduced by the 2026-07-28 MCP specification. Every
+tool is a pure function of its inputs, so no session handshake is required and
+any instance behind a load balancer can answer any request:
+
+```bash
+# Serve on http://127.0.0.1:8000/mcp
+commit-check-mcp --transport http
+
+# Bind all interfaces on a custom port (e.g. inside a container)
+commit-check-mcp --transport http --host 0.0.0.0 --port 8080
+```
+
+The same settings are available as environment variables for container
+images: `COMMIT_CHECK_MCP_TRANSPORT=http`, `COMMIT_CHECK_MCP_HOST`, and
+`COMMIT_CHECK_MCP_PORT`. They are deliberately prefixed — an unprefixed
+`MCP_TRANSPORT` belongs to no particular server, and a stray value would
+turn a stdio launch into an HTTP listener that never answers its client.
+
+> [!IMPORTANT]
+> The server has no built-in authentication or TLS. The `0.0.0.0` bind is
+> meant for containers on a private network behind a TLS-terminating
+> reverse proxy — do not expose the port to the internet as-is. When the
+> server is reachable through a public hostname, restrict the `Host` and
+> `Origin` headers it accepts so DNS-rebinding protection stays strict:
+>
+> ```bash
+> commit-check-mcp --transport http --host 0.0.0.0 --port 8080 \
+>   --allowed-hosts mcp.example.com,mcp.example.com:443 \
+>   --allowed-origins https://app.example.com
+> ```
+>
+> (also available as `COMMIT_CHECK_MCP_ALLOWED_HOSTS` /
+> `COMMIT_CHECK_MCP_ALLOWED_ORIGINS`). `--allowed-origins` requires
+> `--allowed-hosts`: an empty host allowlist rejects every request with
+> 421, so the server refuses to start on that combination.
+
+Each request is self-contained — clients can `POST` a `tools/call` directly
+to `/mcp` without an `initialize` handshake or `Mcp-Session-Id` header:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: tools/call" \
+  -H "Mcp-Name: validate_commit_message" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "validate_commit_message",
+      "arguments": {"message": "feat: add stateless http transport"},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'
+```
+
+The `Mcp-Method` and `Mcp-Name` headers let load balancers route on the
+call without parsing the body (SEP-2243). Declaring `MCP-Protocol-Version`
+commits the request to the 2026-07-28 format, which also requires the
+`_meta` envelope shown above — omit both to fall back to the SDK's
+backward-compatible minimal form.
 
 ## Tool Usage
 

@@ -608,9 +608,114 @@ def describe_validation_rules(
     }
 
 
-def main() -> None:
-    """Run commit-check MCP server via stdio transport."""
-    mcp.run(transport="stdio")
+def main(argv: list[str] | None = None) -> None:
+    """Run the commit-check MCP server.
+
+    Defaults to stdio for local MCP clients. ``--transport http`` serves
+    stateless Streamable HTTP per the 2026-07-28 MCP specification: every
+    tool here is a pure function of its inputs, so no request ever depends
+    on an earlier one and any instance behind a plain load balancer can
+    answer it. Statelessness is therefore not offered as a toggle — for
+    this server it is simply true.
+    """
+    import argparse
+
+    # Environment variables carry the COMMIT_CHECK_MCP_ prefix on purpose. A
+    # bare MCP_TRANSPORT belongs to no particular server, so an unrelated
+    # value left in the environment would turn a stdio launch — how every
+    # desktop MCP client starts this server — into an HTTP listener that
+    # never answers the client's handshake.
+    parser = argparse.ArgumentParser(prog="commit-check-mcp")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default=os.environ.get("COMMIT_CHECK_MCP_TRANSPORT", "stdio"),
+        help="stdio for local clients (default); http for a stateless remote server",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("COMMIT_CHECK_MCP_HOST", "127.0.0.1"),
+        help="bind address for --transport http (default 127.0.0.1; use 0.0.0.0 in containers)",
+    )
+    def _port(value: str) -> int:
+        # Out of range, uvicorn dies deep in asyncio with a bare OverflowError;
+        # port 0 is worse, binding to an arbitrary free port so the server
+        # comes up "successfully" somewhere nothing can reach it.
+        port = int(value)
+        if not 1 <= port <= 65535:
+            raise argparse.ArgumentTypeError(
+                f"port must be between 1 and 65535, got {port}"
+            )
+        return port
+
+    # A string default is converted through the type function only when --port
+    # is absent, so an invalid inherited port still fails loudly on its own but
+    # cannot veto an explicit, valid --port.
+    parser.add_argument(
+        "--port",
+        type=_port,
+        default=os.environ.get("COMMIT_CHECK_MCP_PORT", "8000"),
+        help="port for --transport http (default 8000)",
+    )
+    parser.add_argument(
+        "--allowed-hosts",
+        default=os.environ.get("COMMIT_CHECK_MCP_ALLOWED_HOSTS", ""),
+        help=(
+            "comma-separated Host header allowlist for --transport http"
+            " (e.g. mcp.example.com,mcp.example.com:443); enables strict"
+            " Host/Origin validation against DNS rebinding"
+        ),
+    )
+    parser.add_argument(
+        "--allowed-origins",
+        default=os.environ.get("COMMIT_CHECK_MCP_ALLOWED_ORIGINS", ""),
+        help=(
+            "comma-separated Origin header allowlist for --transport http;"
+            " requires --allowed-hosts"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    # argparse does not check `choices` against env-supplied defaults, and a
+    # typo in COMMIT_CHECK_MCP_TRANSPORT must not silently fall back to stdio
+    # inside a container that expects an HTTP listener.
+    if args.transport not in ("stdio", "http"):
+        parser.error(
+            f"argument --transport: invalid choice: {args.transport!r}"
+            " (choose from 'stdio', 'http')"
+        )
+
+    if args.transport == "http":
+        http_kwargs: dict[str, Any] = {
+            "host": args.host,
+            "port": args.port,
+            "stateless_http": True,
+            "json_response": True,
+        }
+        allowed_hosts = [h.strip() for h in args.allowed_hosts.split(",") if h.strip()]
+        allowed_origins = [
+            o.strip() for o in args.allowed_origins.split(",") if o.strip()
+        ]
+        # Turning on DNS-rebinding protection with an empty host allowlist
+        # rejects *every* request with 421, so origins-only is never a usable
+        # configuration — fail at startup instead of serving a server that
+        # answers nothing.
+        if allowed_origins and not allowed_hosts:
+            parser.error(
+                "--allowed-origins requires --allowed-hosts: an empty host"
+                " allowlist rejects every request with 421 Misdirected Request"
+            )
+        if allowed_hosts:
+            from mcp.server.transport_security import TransportSecuritySettings
+
+            http_kwargs["transport_security"] = TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=allowed_hosts,
+                allowed_origins=allowed_origins,
+            )
+        mcp.run(transport="streamable-http", **http_kwargs)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":  # pragma: no cover
