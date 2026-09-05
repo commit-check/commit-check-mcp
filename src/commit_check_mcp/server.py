@@ -123,6 +123,11 @@ def _run_checks(
     engine = ValidationEngine(filtered)
     outcomes: list[CheckOutcome] = engine.validate_all_detailed(context)
     checks = [o.to_dict() for o in outcomes]
+    # commit-check names the corrected value in "fix" when a failure has an
+    # unambiguous one. Older engines have no such field; give the key a
+    # stable presence so an agent can always test it instead of probing for it.
+    for check in checks:
+        check.setdefault("fix", "")
 
     overall = "fail" if any(c["status"] == "fail" for c in checks) else "pass"
     return {"status": overall, "checks": checks}
@@ -328,7 +333,7 @@ def validate_commit_message(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate a commit message against commit-check rules. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and a list of per-check results. Each check includes the check name, status, value, error message (on failure), and suggestion (on failure).
+    """Validate a commit message against commit-check rules. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and a list of per-check results. Each check includes the check name, status, value, error message (on failure), suggestion (on failure), and fix: the corrected value when the correction is unambiguous (a type's case, a missing colon, a WIP marker, a missing sign-off), otherwise an empty string. Apply a non-empty fix as it stands; when fix is empty, rewrite from the suggestion.
 
     Use this tool when you have a specific commit message string to validate. For batch validation of message, branch, and author together, use validate_commit_context instead.
 
@@ -356,7 +361,7 @@ def validate_branch_name(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate branch naming conventions with commit-check. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and per-check results (check name, status, value, error, suggest).
+    """Validate branch naming conventions with commit-check. Read-only validation. Returns a structured result with overall status ('pass'/'fail') and per-check results (check name, status, value, error, suggest, and fix: the corrected value when unambiguous, else empty).
 
     Use this when you need to verify a branch name follows configured convention rules (e.g., feature/*, bugfix/*). For combined message+branch+author validation, use validate_commit_context.
 
@@ -386,7 +391,7 @@ def validate_author_info(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate commit author name and/or email with commit-check. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest).
+    """Validate commit author name and/or email with commit-check. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest, and fix: the corrected value when unambiguous, else empty).
 
     Use this when you need to verify author metadata against configured rules (e.g., allowed email domains, name patterns). When both name and email are provided, both are validated. If neither is provided, both are checked against repo context. For combined validation, use validate_commit_context.
 
@@ -422,7 +427,7 @@ def validate_push_safety(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate that a push is not a force push. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest). By default, force push is rejected; configure via 'push.allow_force_push' in config.
+    """Validate that a push is not a force push. Read-only validation. Returns a structured result with overall status and per-check results (check name, status, value, error, suggest, and fix: the corrected value when unambiguous, else empty). By default, force push is rejected; configure via 'push.allow_force_push' in config.
 
     Use this before performing a git push to ensure force-push protection rules are satisfied. Only validates the no_force_push rule. Use validate_commit_context for combined checks.
 
@@ -452,7 +457,7 @@ def validate_commit_context(
     repo_path: str | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Run combined commit-check validations for message, branch, and/or author in one call. Read-only validation. Returns a structured result with overall status and a unified list of per-check results (check name, status, value, error, suggest).
+    """Run combined commit-check validations for message, branch, and/or author in one call. Read-only validation. Returns a structured result with overall status and a unified list of per-check results (check name, status, value, error, suggest, and fix: the corrected value when unambiguous, else empty).
 
     Use this when you need to validate multiple commit aspects simultaneously in a single call. At least one of message, branch, author_name, or author_email must be provided. For individual aspects, use the specific validate_commit_message, validate_branch_name, or validate_author_info tools.
 
