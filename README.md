@@ -36,11 +36,19 @@ All validation tools return the same structured commit-check result shape:
       "status": "pass|fail",
       "value": "...",
       "error": "...",
-      "suggest": "..."
+      "suggest": "...",
+      "fix": "..."
     }
   ]
 }
 ```
+
+`suggest` is the advice a person reads. `fix` is the corrected value itself,
+present only when the correction is unambiguous — `Fix: add x` comes back with
+`"fix": "fix: add x"` — and an empty string otherwise, so an agent can apply
+a non-empty `fix` as it stands and fall back to `suggest` when it is empty.
+Populating `fix` needs a commit-check release that carries the field; with an
+older commit-check the key is present and always empty.
 
 ## Installation
 

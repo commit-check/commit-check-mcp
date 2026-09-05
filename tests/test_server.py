@@ -885,3 +885,68 @@ class TestMain:
         monkeypatch.setattr(server.mcp, "run", fake_run)
         server.main()
         assert called
+
+
+# ---------------------------------------------------------------------------
+# _run_checks: the "fix" key
+# ---------------------------------------------------------------------------
+
+class TestRunChecksFixField:
+    def test_every_check_carries_a_fix_key(self) -> None:
+        """Whatever the installed commit-check emits, an agent can read check["fix"]."""
+        from commit_check.engine import ValidationContext
+
+        result = server._run_checks(
+            ["message"], ValidationContext(stdin_text="Fix: add x"), server._merge_config(None)
+        )
+        assert result["status"] == "fail"
+        assert all("fix" in c for c in result["checks"])
+        assert all(isinstance(c["fix"], str) for c in result["checks"])
+
+    def test_engine_fix_is_passed_through_untouched(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from commit_check.engine import ValidationContext
+
+        class Outcome:
+            def to_dict(self) -> dict[str, str]:
+                return {
+                    "rule_id": "CC001",
+                    "check": "message",
+                    "status": "fail",
+                    "value": "Fix: add x",
+                    "error": "Not conventional",
+                    "suggest": 'Use "fix: add x"',
+                    "fix": "fix: add x",
+                    "docs_url": "https://commit-check.com/rules/#cc001",
+                }
+
+        monkeypatch.setattr(
+            server.ValidationEngine, "validate_all_detailed", lambda self, context: [Outcome()]
+        )
+        result = server._run_checks(
+            ["message"], ValidationContext(stdin_text="Fix: add x"), server._merge_config(None)
+        )
+        assert result["checks"][0]["fix"] == "fix: add x"
+        assert result["checks"][0]["suggest"] == 'Use "fix: add x"'
+
+    def test_an_engine_without_the_field_yields_an_empty_fix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from commit_check.engine import ValidationContext
+
+        class OldOutcome:
+            def to_dict(self) -> dict[str, str]:
+                return {
+                    "check": "message",
+                    "status": "fail",
+                    "value": "Fix: add x",
+                    "error": "Not conventional",
+                    "suggest": "Use a conventional type",
+                }
+
+        monkeypatch.setattr(
+            server.ValidationEngine, "validate_all_detailed", lambda self, context: [OldOutcome()]
+        )
+        result = server._run_checks(
+            ["message"], ValidationContext(stdin_text="Fix: add x"), server._merge_config(None)
+        )
+        assert result["checks"][0]["fix"] == ""
