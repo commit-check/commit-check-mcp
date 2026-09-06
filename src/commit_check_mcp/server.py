@@ -11,7 +11,13 @@ from typing import Any
 
 from commit_check import __version__ as commit_check_version
 from commit_check.config_merger import deep_merge, get_default_config, load_toml_config
-from commit_check.engine import ValidationContext, ValidationEngine, CheckOutcome
+from commit_check.engine import (
+    CheckOutcome,
+    ValidationContext,
+    ValidationEngine,
+    count_warnings,
+    overall_status,
+)
 from commit_check.rule_builder import RuleBuilder, ValidationRule
 from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
 from mcp.server.mcpserver import MCPServer
@@ -159,15 +165,24 @@ def _run_checks(
 
     engine = ValidationEngine(filtered)
     outcomes: list[CheckOutcome] = engine.validate_all_detailed(context)
-    checks = [o.to_dict() for o in outcomes]
-    # commit-check names the corrected value in "fix" when a failure has an
-    # unambiguous one. Older engines have no such field; give the key a
-    # stable presence so an agent can always test it instead of probing for it.
-    for check in checks:
-        check.setdefault("fix", "")
+    return _summarize([o.to_dict() for o in outcomes])
 
-    overall = "fail" if any(c["status"] == "fail" for c in checks) else "pass"
-    return {"status": overall, "checks": checks}
+
+def _summarize(checks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Wrap per-check results in the shape every validation tool returns.
+
+    The overall ``status`` comes from commit-check's own reducer, so a run in
+    which every check skipped is reported as ``"skip"`` rather than ``"pass"``:
+    nothing was validated, and an agent must not read that as approval. A
+    ``"warn"`` is a finding the config asked to report without enforcing; it
+    leaves ``status`` at ``"pass"`` and is counted in ``warnings``.
+    """
+    statuses = [c["status"] for c in checks]
+    return {
+        "status": overall_status(statuses),
+        "warnings": count_warnings(statuses),
+        "checks": checks,
+    }
 
 
 def _validate_message(
@@ -267,11 +282,7 @@ def _validate_author(
                 ValidationContext(stdin_text=email, config=cfg),
                 cfg,
             )
-            checks = name_result["checks"] + email_result["checks"]
-            return {
-                "status": "fail" if any(c["status"] == "fail" for c in checks) else "pass",
-                "checks": checks,
-            }
+            return _summarize(name_result["checks"] + email_result["checks"])
 
         check_names: list[str] = []
         stdin = None
@@ -350,10 +361,7 @@ def _validate_all(
                     )["checks"]
                 )
 
-    return {
-        "status": "fail" if any(c["status"] == "fail" for c in checks) else "pass",
-        "checks": checks,
-    }
+    return _summarize(checks)
 
 
 @mcp.tool()
@@ -620,10 +628,7 @@ def validate_repository_state(
             )["checks"]
         )
 
-    return {
-        "status": "fail" if any(c["status"] == "fail" for c in checks) else "pass",
-        "checks": checks,
-    }
+    return _summarize(checks)
 
 
 @mcp.tool()
