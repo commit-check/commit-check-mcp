@@ -19,7 +19,7 @@ This MCP server exposes commit-check validations as MCP tools:
 - `server_health` — returns server/sdk versions
 - `validate_commit_message` — validates a commit message
 - `validate_branch_name` — validates a branch name or the current repo branch
-- `validate_push_safety` — validates that a push is not a force push
+- `validate_push_safety` — validates that a push is not a force push (force pushes are always rejected by this tool)
 - `validate_author_info` — validates author name/email or the repo's git author config
 - `validate_commit_context` — runs combined checks in one call
 - `validate_repository_state` — validates latest commit, current branch, author state, and optional push safety for a repo
@@ -33,16 +33,21 @@ All validation tools return the same structured commit-check result shape:
   "warnings": 0,
   "checks": [
     {
+      "rule_id": "CC001",
       "check": "message",
       "status": "pass|fail|warn|skip",
       "value": "...",
       "error": "...",
       "suggest": "...",
-      "fix": "..."
+      "fix": "...",
+      "docs_url": "https://commit-check.com/rules/#cc001"
     }
   ]
 }
 ```
+
+`rule_id` is the stable id of the rule that produced the check and `docs_url`
+links to its documentation.
 
 Only `fail` is a rejection. A check reports `skip` when it did not run — the
 author matched `ignore_authors`, or there was nothing to check — and the
@@ -266,10 +271,22 @@ After the client starts the server, it will expose these tools:
 - `validate_repository_state(repo_path?, config?, config_path?, include_message?, include_branch?, include_author?, include_push?)`
 - `describe_validation_rules(config?, repo_path?, config_path?)`
 
+Every parameter carries a description in the tool's JSON input schema, so an
+MCP client (and the model behind it) can see what each one expects without
+reading this file: for example `push_refs` documents the git pre-push line
+format `<local_ref> <local_sha> <remote_ref> <remote_sha>`. Each tool also has
+a display `title` and is annotated `readOnlyHint: true` (with `openWorldHint:
+true` only on `validate_push_safety` and `validate_repository_state`, which may
+run `git fetch` to resolve push SHAs), so clients that gate tool calls on those
+hints can auto-approve them. The server's `instructions` describe the intended
+loop: validate first, read `status` (only `fail` rejects, `skip` is not
+approval), apply a non-empty `fix` verbatim or follow `suggest`, then validate
+again.
+
 The common optional arguments are:
 
 - `repo_path`: repository directory to validate against; it must be a git repository when the tool reads git state (branch, author, or push refs omitted, or `validate_repository_state`), and may be a plain directory holding a config file when every value is supplied
-- `config_path`: explicit TOML config file; relative paths resolve from `repo_path`
+- `config_path`: explicit TOML config file, used instead of the repository's own `cchk.toml`/`commit-check.toml`; relative paths resolve from `repo_path`
 - `config`: ad-hoc config overrides merged on top of defaults and repo config
 
 ## Common Examples
@@ -355,9 +372,8 @@ Example payload for a repository-wide validation:
 Config precedence is:
 
 1. `commit-check` built-in defaults
-2. repository config loaded from `repo_path`
-3. `config_path` when explicitly provided
-4. inline `config` overrides passed to the tool
+2. repository config loaded from `repo_path`, or the file named by `config_path` when it is provided (it replaces the repository's own config file)
+3. inline `config` overrides passed to the tool
 
 ## Published On
 

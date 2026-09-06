@@ -1194,3 +1194,72 @@ class TestBlankPushRefs:
     def test_blank_push_refs_via_tool_call(self) -> None:
         with pytest.raises(ToolError, match="push_refs cannot be empty when provided"):
             _call_tool("validate_push_safety", push_refs="   ")
+
+
+# ---------------------------------------------------------------------------
+# What an MCP client is told about the tools: titles, annotations, schema
+# descriptions, server version and instructions
+# ---------------------------------------------------------------------------
+
+OPEN_WORLD_TOOLS = {"validate_push_safety", "validate_repository_state"}
+
+
+def _list_tools() -> list:
+    """List tools the way an MCP client does, through the server's list path."""
+    return asyncio.run(server.mcp.list_tools())
+
+
+class TestToolMetadata:
+    def test_every_tool_has_a_title_and_read_only_annotations(self) -> None:
+        tools = _list_tools()
+        assert len(tools) == 8
+        for tool in tools:
+            assert tool.title, tool.name
+            assert tool.annotations is not None, tool.name
+            assert tool.annotations.read_only_hint is True, tool.name
+            assert tool.annotations.destructive_hint is False, tool.name
+            assert tool.annotations.idempotent_hint is True, tool.name
+
+    def test_open_world_hint_marks_only_the_tools_that_may_fetch(self) -> None:
+        for tool in _list_tools():
+            expected = tool.name in OPEN_WORLD_TOOLS
+            assert tool.annotations.open_world_hint is expected, tool.name
+
+    def test_every_parameter_has_a_description(self) -> None:
+        seen = 0
+        for tool in _list_tools():
+            for name, prop in tool.input_schema.get("properties", {}).items():
+                seen += 1
+                assert prop.get("description"), f"{tool.name}.{name} has no description"
+        assert seen > 0
+
+    def test_push_refs_description_explains_the_pre_push_line_format(self) -> None:
+        tool = next(t for t in _list_tools() if t.name == "validate_push_safety")
+        description = tool.input_schema["properties"]["push_refs"]["description"]
+        assert "<local_ref> <local_sha> <remote_ref> <remote_sha>" in description
+        assert "40 zeros" in description
+        assert "upstream" in description
+        assert "non-empty when provided" in description
+
+    def test_validation_tools_describe_the_result_shape(self) -> None:
+        validators = [t for t in _list_tools() if t.name.startswith("validate_")]
+        assert len(validators) == 6
+        for tool in validators:
+            for term in ("rule_id", "docs_url", "'warn'", "'skip'", "fix", "suggest"):
+                assert term in tool.description, f"{tool.name} does not mention {term}"
+
+    def test_push_safety_says_force_pushes_are_always_rejected(self) -> None:
+        tool = next(t for t in _list_tools() if t.name == "validate_push_safety")
+        assert "always rejected" in tool.description
+        assert "configure via" not in tool.description
+
+    def test_server_reports_its_version(self) -> None:
+        assert server.mcp.version == server.__version__
+        assert server.mcp.version != ""
+
+    def test_instructions_describe_the_validate_fix_workflow(self) -> None:
+        instructions = server.mcp.instructions
+        assert instructions is not None
+        assert "validate" in instructions
+        assert "fix" in instructions
+        assert "describe_validation_rules" in instructions
