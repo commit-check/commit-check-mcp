@@ -50,6 +50,13 @@ a non-empty `fix` as it stands and fall back to `suggest` when it is empty.
 Populating `fix` needs a commit-check release that carries the field; with an
 older commit-check the key is present and always empty.
 
+A call that cannot run at all — an empty `message`, a `repo_path` that does not
+exist, a `repo_path` that is not a git repository when the tool has to read git
+state (see the `repo_path` note under [Tool Usage](#tool-usage)), a malformed or rejected
+commit-check config — is returned as an MCP tool error (`is_error`) whose text
+names the problem, for example `repo_path is not a git repository: /path/to/dir`
+or `invalid commit-check config: ...`, rather than as a `pass`/`fail` result.
+
 ## Installation
 
 ```bash
@@ -255,7 +262,7 @@ After the client starts the server, it will expose these tools:
 
 The common optional arguments are:
 
-- `repo_path`: repository directory to validate against
+- `repo_path`: repository directory to validate against; it must be a git repository when the tool reads git state (branch, author, or push refs omitted, or `validate_repository_state`), and may be a plain directory holding a config file when every value is supplied
 - `config_path`: explicit TOML config file; relative paths resolve from `repo_path`
 - `config`: ad-hoc config overrides merged on top of defaults and repo config
 
@@ -290,7 +297,7 @@ Validate the full repository state:
 }
 ```
 
-Validate push safety from git pre-push hook ref metadata:
+Validate push safety from git pre-push hook ref metadata (`push_refs` must be non-empty when given; omit it to check the current branch against its upstream):
 
 ```json
 {
@@ -323,7 +330,7 @@ Inspect the final merged rules that will be applied:
 Typical patterns:
 
 - Validate an explicit message with a repository's rules
-- Validate the current repository state without passing message/branch/author values manually
+- Validate the current repository state — the latest commit's message and author, and the current branch — without passing message/branch/author values manually
 - Validate push safety using pre-push ref metadata, or check the current branch against its upstream
 - Inspect which rules are actually enabled after config merging
 

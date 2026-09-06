@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
 import os
+import subprocess
 from typing import Any
 
 from commit_check import __version__ as commit_check_version
@@ -14,6 +15,7 @@ from commit_check.engine import ValidationContext, ValidationEngine, CheckOutcom
 from commit_check.rule_builder import RuleBuilder, ValidationRule
 from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from . import __version__
 
@@ -31,7 +33,7 @@ def _normalize_config(config: dict[str, Any] | None) -> dict[str, Any] | None:
     if config is None:
         return None
     if not isinstance(config, dict):
-        raise ValueError("config must be an object/dictionary when provided")
+        raise ToolError("config must be an object/dictionary when provided")
     return config
 
 
@@ -40,17 +42,39 @@ def _normalize_repo_path(repo_path: str | None) -> Path | None:
     if repo_path is None:
         return None
     if not isinstance(repo_path, str):
-        raise ValueError("repo_path must be a string when provided")
+        raise ToolError("repo_path must be a string when provided")
     normalized = repo_path.strip()
     if not normalized:
-        raise ValueError("repo_path cannot be empty when provided")
+        raise ToolError("repo_path cannot be empty when provided")
 
     path = Path(normalized).expanduser().resolve()
     if not path.exists():
-        raise ValueError(f"repo_path does not exist: {path}")
+        raise ToolError(f"repo_path does not exist: {path}")
     if not path.is_dir():
-        raise ValueError(f"repo_path must be a directory: {path}")
+        raise ToolError(f"repo_path must be a directory: {path}")
     return path
+
+
+def _require_git_repo(repo_path: Path | None) -> None:
+    """Fail when the directory a git-backed check would run in is not a git work tree.
+
+    commit-check reads the branch, author, HEAD message, and upstream through
+    ``git``; outside a repository those reads come back empty and every rule
+    passes vacuously, so tools that will consult git call this first.
+    """
+    directory = repo_path if repo_path is not None else Path.cwd()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as e:
+        raise ToolError(f"git is not available to inspect repo_path {directory}: {e}") from e
+    if result.returncode != 0:
+        raise ToolError(f"repo_path is not a git repository: {directory}")
 
 
 def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> str | None:
@@ -58,10 +82,10 @@ def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> s
     if config_path is None:
         return None
     if not isinstance(config_path, str):
-        raise ValueError("config_path must be a string when provided")
+        raise ToolError("config_path must be a string when provided")
     normalized = config_path.strip()
     if not normalized:
-        raise ValueError("config_path cannot be empty when provided")
+        raise ToolError("config_path cannot be empty when provided")
 
     path = Path(normalized).expanduser()
     if not path.is_absolute() and repo_path is not None:
@@ -69,9 +93,9 @@ def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> s
 
     resolved = path.resolve()
     if not resolved.exists():
-        raise ValueError(f"config_path does not exist: {resolved}")
+        raise ToolError(f"config_path does not exist: {resolved}")
     if not resolved.is_file():
-        raise ValueError(f"config_path must be a file: {resolved}")
+        raise ToolError(f"config_path must be a file: {resolved}")
     return str(resolved)
 
 
@@ -98,13 +122,26 @@ def _merge_config(
 ) -> dict[str, Any]:
     """Merge repository config and user config on top of commit-check defaults."""
     merged = get_default_config()
-    with _working_directory(repo_path):
-        loaded_config = load_toml_config(config_path or "")
-    if loaded_config:
-        deep_merge(merged, loaded_config)
-    if config:
-        deep_merge(merged, config)
+    try:
+        with _working_directory(repo_path):
+            loaded_config = load_toml_config(config_path or "")
+        if loaded_config:
+            deep_merge(merged, loaded_config)
+        if config:
+            deep_merge(merged, config)
+    except ValueError as e:
+        # tomllib/tomli TOMLDecodeError subclasses ValueError, so this covers a
+        # malformed config file as well as a value commit-check rejects.
+        raise ToolError(f"invalid commit-check config: {e}") from e
     return merged
+
+
+def _build_rules(config: dict[str, Any]) -> list[ValidationRule]:
+    """Build commit-check rules, reporting a rejected config as a tool error."""
+    try:
+        return RuleBuilder(config).build_all_rules()
+    except ValueError as e:
+        raise ToolError(f"invalid commit-check config: {e}") from e
 
 
 def _run_checks(
@@ -117,7 +154,7 @@ def _run_checks(
     Uses ValidationEngine.validate_all_detailed() which internally
     suppresses terminal output and collects structured failure details.
     """
-    rules = RuleBuilder(config).build_all_rules()
+    rules = _build_rules(config)
     filtered: list[ValidationRule] = [r for r in rules if r.check in check_names]
 
     engine = ValidationEngine(filtered)
@@ -134,13 +171,17 @@ def _run_checks(
 
 
 def _validate_message(
-    message: str,
+    message: str | None,
     *,
     config: dict[str, Any] | None = None,
     repo_path: Path | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate message using commit-check engine internals."""
+    """Validate message using commit-check engine internals.
+
+    A ``None`` message makes commit-check read the latest commit (``git log -1``)
+    in the working directory, as the CLI does when no message is supplied.
+    """
     cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
     with _working_directory(repo_path):
         return _run_checks(
@@ -344,7 +385,7 @@ def validate_commit_message(
     - config_path (optional): Path to a custom commit-check TOML config file.
     """
     if not isinstance(message, str) or not message.strip():
-        raise ValueError("message must be a non-empty string")
+        raise ToolError("message must be a non-empty string")
     normalized_repo_path = _normalize_repo_path(repo_path)
     return _validate_message(
         message.strip(),
@@ -373,8 +414,10 @@ def validate_branch_name(
     """
     normalized_branch = branch.strip() if isinstance(branch, str) else None
     if isinstance(branch, str) and not normalized_branch:
-        raise ValueError("branch cannot be empty when provided")
+        raise ToolError("branch cannot be empty when provided")
     normalized_repo_path = _normalize_repo_path(repo_path)
+    if normalized_branch is None:
+        _require_git_repo(normalized_repo_path)
     return _validate_branch(
         normalized_branch,
         config=_normalize_config(config),
@@ -406,10 +449,12 @@ def validate_author_info(
     normalized_email = author_email.strip() if isinstance(author_email, str) else None
 
     if isinstance(author_name, str) and not normalized_name:
-        raise ValueError("author_name cannot be empty when provided")
+        raise ToolError("author_name cannot be empty when provided")
     if isinstance(author_email, str) and not normalized_email:
-        raise ValueError("author_email cannot be empty when provided")
+        raise ToolError("author_email cannot be empty when provided")
     normalized_repo_path = _normalize_repo_path(repo_path)
+    if normalized_name is None and normalized_email is None:
+        _require_git_repo(normalized_repo_path)
 
     return _validate_author(
         normalized_name,
@@ -432,13 +477,17 @@ def validate_push_safety(
     Use this before performing a git push to ensure force-push protection rules are satisfied. Only validates the no_force_push rule. Use validate_commit_context for combined checks.
 
     Parameters:
-    - push_refs (optional): The push ref specification to validate. If omitted, checks upstream fallback state.
+    - push_refs (optional): The push ref specification to validate. If omitted, checks upstream fallback state. Must be non-empty when provided.
     - config (optional): Inline JSON config overrides.
     - repo_path (optional): Path to the git repository.
     - config_path (optional): Path to a custom commit-check TOML config file.
     """
     normalized_push_refs = push_refs.strip() if isinstance(push_refs, str) else None
+    if isinstance(push_refs, str) and not normalized_push_refs:
+        raise ToolError("push_refs cannot be empty when provided")
     normalized_repo_path = _normalize_repo_path(repo_path)
+    if normalized_push_refs is None:
+        _require_git_repo(normalized_repo_path)
     return _validate_push(
         normalized_push_refs,
         config=_normalize_config(config),
@@ -476,16 +525,16 @@ def validate_commit_context(
     normalized_email = author_email.strip() if isinstance(author_email, str) else None
 
     if isinstance(message, str) and not normalized_message:
-        raise ValueError("message cannot be empty when provided")
+        raise ToolError("message cannot be empty when provided")
     if isinstance(branch, str) and not normalized_branch:
-        raise ValueError("branch cannot be empty when provided")
+        raise ToolError("branch cannot be empty when provided")
     if isinstance(author_name, str) and not normalized_name:
-        raise ValueError("author_name cannot be empty when provided")
+        raise ToolError("author_name cannot be empty when provided")
     if isinstance(author_email, str) and not normalized_email:
-        raise ValueError("author_email cannot be empty when provided")
+        raise ToolError("author_email cannot be empty when provided")
 
     if not any([normalized_message, normalized_branch, normalized_name, normalized_email]):
-        raise ValueError(
+        raise ToolError(
             "At least one of message, branch, author_name, or author_email must be provided"
         )
     normalized_repo_path = _normalize_repo_path(repo_path)
@@ -525,9 +574,10 @@ def validate_repository_state(
     - include_push (optional, default false): Whether to validate push safety.
     """
     if not any([include_message, include_branch, include_author, include_push]):
-        raise ValueError("At least one validation target must be enabled")
+        raise ToolError("At least one validation target must be enabled")
 
     normalized_repo_path = _normalize_repo_path(repo_path)
+    _require_git_repo(normalized_repo_path)
     normalized_config = _normalize_config(config)
     normalized_config_path = _normalize_config_path(config_path, normalized_repo_path)
 
@@ -535,7 +585,7 @@ def validate_repository_state(
     if include_message:
         checks.extend(
             _validate_message(
-                "",
+                None,
                 config=normalized_config,
                 repo_path=normalized_repo_path,
                 config_path=normalized_config_path,
@@ -599,7 +649,7 @@ def describe_validation_rules(
         repo_path=normalized_repo_path,
         config_path=normalized_config_path,
     )
-    rules = [rule.to_dict() for rule in RuleBuilder(merged_config).build_all_rules()]
+    rules = [rule.to_dict() for rule in _build_rules(merged_config)]
 
     return {
         "commit_check_version": commit_check_version,

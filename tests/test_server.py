@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import asyncio
 import os
+import subprocess
 
 import pytest
 
 from commit_check_mcp import server
+from mcp.server.mcpserver.exceptions import ToolError
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +25,7 @@ class TestNormalizeConfig:
         assert server._normalize_config({"key": "val"}) == {"key": "val"}
 
     def test_non_dict_raises(self) -> None:
-        with pytest.raises(ValueError, match="must be an object/dictionary"):
+        with pytest.raises(ToolError, match="must be an object/dictionary"):
             server._normalize_config("string")  # type: ignore[arg-type]
 
 
@@ -39,21 +42,21 @@ class TestNormalizeRepoPath:
         assert result == tmp_path.resolve()
 
     def test_non_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="repo_path must be a string"):
+        with pytest.raises(ToolError, match="repo_path must be a string"):
             server._normalize_repo_path(123)  # type: ignore[arg-type]
 
     def test_empty_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="repo_path cannot be empty"):
+        with pytest.raises(ToolError, match="repo_path cannot be empty"):
             server._normalize_repo_path("   ")
 
     def test_non_existent_raises(self) -> None:
-        with pytest.raises(ValueError, match="repo_path does not exist"):
+        with pytest.raises(ToolError, match="repo_path does not exist"):
             server._normalize_repo_path("/non/existent/path/xyz123")
 
     def test_file_path_raises(self, tmp_path: Path) -> None:
         f = tmp_path / "afile.txt"
         f.write_text("hello")
-        with pytest.raises(ValueError, match="repo_path must be a directory"):
+        with pytest.raises(ToolError, match="repo_path must be a directory"):
             server._normalize_repo_path(str(f))
 
 
@@ -80,19 +83,19 @@ class TestNormalizeConfigPath:
         assert result == str(cfg.resolve())
 
     def test_non_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="config_path must be a string"):
+        with pytest.raises(ToolError, match="config_path must be a string"):
             server._normalize_config_path(123, None)  # type: ignore[arg-type]
 
     def test_empty_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="config_path cannot be empty"):
+        with pytest.raises(ToolError, match="config_path cannot be empty"):
             server._normalize_config_path("   ", None)
 
     def test_non_existent_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="config_path does not exist"):
+        with pytest.raises(ToolError, match="config_path does not exist"):
             server._normalize_config_path(str(tmp_path / "missing.toml"), None)
 
     def test_non_file_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="config_path must be a file"):
+        with pytest.raises(ToolError, match="config_path must be a file"):
             server._normalize_config_path(str(tmp_path), None)
 
 
@@ -516,11 +519,11 @@ class TestServerHealth:
 
 class TestValidateCommitMessage:
     def test_non_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="non-empty"):
+        with pytest.raises(ToolError, match="non-empty"):
             server.validate_commit_message(123)  # type: ignore[arg-type]
 
     def test_empty_raises(self) -> None:
-        with pytest.raises(ValueError, match="non-empty"):
+        with pytest.raises(ToolError, match="non-empty"):
             server.validate_commit_message("   ")
 
     def test_valid_message_with_repo_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -552,7 +555,7 @@ class TestValidateCommitMessage:
 
 class TestValidateBranchName:
     def test_empty_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="branch cannot be empty"):
+        with pytest.raises(ToolError, match="branch cannot be empty"):
             server.validate_branch_name(branch="   ")
 
     def test_none_passed_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -588,11 +591,11 @@ class TestValidateBranchName:
 
 class TestValidateAuthorInfo:
     def test_empty_name_raises(self) -> None:
-        with pytest.raises(ValueError, match="author_name cannot be empty"):
+        with pytest.raises(ToolError, match="author_name cannot be empty"):
             server.validate_author_info(author_name="   ")
 
     def test_empty_email_raises(self) -> None:
-        with pytest.raises(ValueError, match="author_email cannot be empty"):
+        with pytest.raises(ToolError, match="author_email cannot be empty"):
             server.validate_author_info(author_email="   ")
 
     def test_valid_values_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -665,23 +668,23 @@ class TestValidatePushSafety:
 
 class TestValidateCommitContext:
     def test_empty_message_raises(self) -> None:
-        with pytest.raises(ValueError, match="message cannot be empty"):
+        with pytest.raises(ToolError, match="message cannot be empty"):
             server.validate_commit_context(message="   ")
 
     def test_empty_branch_raises(self) -> None:
-        with pytest.raises(ValueError, match="branch cannot be empty"):
+        with pytest.raises(ToolError, match="branch cannot be empty"):
             server.validate_commit_context(branch="   ")
 
     def test_empty_author_name_raises(self) -> None:
-        with pytest.raises(ValueError, match="author_name cannot be empty"):
+        with pytest.raises(ToolError, match="author_name cannot be empty"):
             server.validate_commit_context(author_name="   ")
 
     def test_empty_author_email_raises(self) -> None:
-        with pytest.raises(ValueError, match="author_email cannot be empty"):
+        with pytest.raises(ToolError, match="author_email cannot be empty"):
             server.validate_commit_context(author_email="   ")
 
     def test_no_fields_raises(self) -> None:
-        with pytest.raises(ValueError, match="At least one"):
+        with pytest.raises(ToolError, match="At least one"):
             server.validate_commit_context()
 
     def test_all_fields_forwards(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -735,7 +738,7 @@ class TestValidateCommitContext:
 
 class TestValidateRepositoryState:
     def test_all_disabled_raises(self) -> None:
-        with pytest.raises(ValueError, match="At least one validation target"):
+        with pytest.raises(ToolError, match="At least one validation target"):
             server.validate_repository_state(
                 include_message=False,
                 include_branch=False,
@@ -950,3 +953,166 @@ class TestRunChecksFixField:
             ["message"], ValidationContext(stdin_text="Fix: add x"), server._merge_config(None)
         )
         assert result["checks"][0]["fix"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Errors reach the agent as tool errors (through the MCP tool manager)
+# ---------------------------------------------------------------------------
+
+def _call_tool(name: str, **arguments: object) -> object:
+    """Invoke a tool the way an MCP client does, through the server's call path."""
+    return asyncio.run(server.mcp.call_tool(name, arguments))
+
+
+def _git(repo: Path, *args: str) -> None:
+    env = dict(
+        os.environ,
+        GIT_AUTHOR_NAME="Alice Example",
+        GIT_AUTHOR_EMAIL="alice@example.com",
+        GIT_COMMITTER_NAME="Alice Example",
+        GIT_COMMITTER_EMAIL="alice@example.com",
+    )
+    subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+
+
+def _repo_with_commit(root: Path, subject: str) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "file.txt").write_text("content\n")
+    _git(repo, "add", "file.txt")
+    _git(repo, "commit", "-q", "-m", subject)
+    return repo
+
+
+class TestToolErrorsReachTheClient:
+    def test_nonexistent_repo_path(self) -> None:
+        with pytest.raises(ToolError, match="repo_path does not exist: /no/such/dir"):
+            _call_tool("validate_commit_message", message="feat: x", repo_path="/no/such/dir")
+
+    def test_empty_message(self) -> None:
+        with pytest.raises(ToolError, match="message must be a non-empty string"):
+            _call_tool("validate_commit_message", message="   ")
+
+    def test_malformed_toml_config(self, tmp_path: Path) -> None:
+        (tmp_path / "cchk.toml").write_text("[commit\nthis is not toml\n")
+        with pytest.raises(ToolError, match="invalid commit-check config: "):
+            _call_tool("validate_commit_message", message="feat: x", repo_path=str(tmp_path))
+
+    def test_rejected_config_value(self, tmp_path: Path) -> None:
+        (tmp_path / "cchk.toml").write_text('warn = ["no_such_rule"]\n')
+        with pytest.raises(ToolError, match="invalid commit-check config: "):
+            _call_tool("describe_validation_rules", repo_path=str(tmp_path))
+
+    def test_error_text_is_not_the_generic_crash_message(self) -> None:
+        with pytest.raises(ToolError) as excinfo:
+            _call_tool("validate_commit_message", message="   ")
+        assert str(excinfo.value) != "Error executing tool validate_commit_message"
+
+
+# ---------------------------------------------------------------------------
+# validate_repository_state reads HEAD's message
+# ---------------------------------------------------------------------------
+
+class TestRepositoryStateValidatesHead:
+    def test_non_conventional_head_subject_fails(self, tmp_path: Path) -> None:
+        repo = _repo_with_commit(tmp_path, "this is not conventional")
+        result = server.validate_repository_state(
+            repo_path=str(repo), include_branch=False, include_author=False
+        )
+        message = next(c for c in result["checks"] if c["check"] == "message")
+        assert message["status"] == "fail"
+        assert message["value"] == "this is not conventional"
+        assert result["status"] == "fail"
+
+    def test_conventional_head_subject_passes(self, tmp_path: Path) -> None:
+        repo = _repo_with_commit(tmp_path, "feat: add a file")
+        result = server.validate_repository_state(
+            repo_path=str(repo), include_branch=False, include_author=False
+        )
+        message = next(c for c in result["checks"] if c["check"] == "message")
+        assert message["status"] == "pass"
+        assert message["value"] == "feat: add a file"
+        assert result["status"] == "pass"
+
+    def test_message_helper_passes_none_for_head(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_validate_message(message, *, config, repo_path, config_path):
+            captured["message"] = message
+            return {"status": "pass", "checks": []}
+
+        monkeypatch.setattr(server, "_validate_message", fake_validate_message)
+        monkeypatch.setattr(server, "_require_git_repo", lambda _path: None)
+
+        server.validate_repository_state(
+            include_branch=False, include_author=False, include_push=False
+        )
+        assert captured["message"] is None
+
+
+# ---------------------------------------------------------------------------
+# A non-git repo_path is rejected by tools that consult git
+# ---------------------------------------------------------------------------
+
+class TestRequireGitRepo:
+    def test_git_repo_is_accepted(self, tmp_path: Path) -> None:
+        repo = _repo_with_commit(tmp_path, "feat: add a file")
+        server._require_git_repo(repo)  # should not raise
+
+    def test_plain_directory_is_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="repo_path is not a git repository"):
+            server._require_git_repo(tmp_path)
+
+    def test_repository_state_rejects_plain_directory(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="repo_path is not a git repository"):
+            server.validate_repository_state(repo_path=str(tmp_path))
+
+    def test_branch_omitted_rejects_plain_directory(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="repo_path is not a git repository"):
+            server.validate_branch_name(repo_path=str(tmp_path))
+
+    def test_author_omitted_rejects_plain_directory(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="repo_path is not a git repository"):
+            server.validate_author_info(repo_path=str(tmp_path))
+
+    def test_push_refs_omitted_rejects_plain_directory(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="repo_path is not a git repository"):
+            server.validate_push_safety(repo_path=str(tmp_path))
+
+    def test_supplied_values_validate_without_git(self, tmp_path: Path) -> None:
+        plain = str(tmp_path)
+        assert server.validate_commit_message("feat: add x", repo_path=plain)["status"] == "pass"
+        assert server.validate_branch_name("main", repo_path=plain)["status"] in ("pass", "fail")
+        assert server.validate_author_info(
+            "Alice Example", "alice@example.com", repo_path=plain
+        )["status"] in ("pass", "fail")
+        assert server.validate_push_safety(
+            "refs/heads/main 0000000000000000000000000000000000000000 "
+            "refs/heads/main 0000000000000000000000000000000000000000",
+            repo_path=plain,
+        )["status"] in ("pass", "fail")
+        assert server.validate_commit_context(message="feat: add x", repo_path=plain)[
+            "status"
+        ] == "pass"
+        assert "enabled_rules" in server.describe_validation_rules(repo_path=plain)
+
+
+# ---------------------------------------------------------------------------
+# Blank push_refs is an error, not a vacuous pass
+# ---------------------------------------------------------------------------
+
+class TestBlankPushRefs:
+    def test_blank_push_refs_raises(self) -> None:
+        with pytest.raises(ToolError, match="push_refs cannot be empty when provided"):
+            server.validate_push_safety(push_refs="   ")
+
+    def test_blank_push_refs_via_tool_call(self) -> None:
+        with pytest.raises(ToolError, match="push_refs cannot be empty when provided"):
+            _call_tool("validate_push_safety", push_refs="   ")
