@@ -891,6 +891,107 @@ class TestMain:
 
 
 # ---------------------------------------------------------------------------
+# _summarize: the overall status and the warnings count
+# ---------------------------------------------------------------------------
+
+
+def _outcome(status: str, check: str = "message") -> object:
+    class Outcome:
+        def to_dict(self) -> dict[str, str]:
+            return {
+                "check": check,
+                "status": status,
+                "value": "x",
+                "error": "",
+                "suggest": "",
+                "fix": "",
+            }
+
+    return Outcome()
+
+
+class TestSummarize:
+    def test_a_fully_skipped_run_is_reported_as_skip_not_pass(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every check skipped means nothing was validated. The old hand-rolled
+        reducer defaulted anything that was not a failure to "pass", which
+        told an agent a bypassed policy had been enforced."""
+        from commit_check.engine import ValidationContext
+
+        monkeypatch.setattr(
+            server.ValidationEngine,
+            "validate_all_detailed",
+            lambda self, context: [_outcome("skip"), _outcome("skip", "author_name")],
+        )
+        result = server._run_checks(
+            ["message", "author_name"], ValidationContext(stdin_text="x"), server._merge_config(None)
+        )
+        assert result["status"] == "skip"
+        assert result["warnings"] == 0
+
+    def test_one_real_verdict_outweighs_the_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from commit_check.engine import ValidationContext
+
+        monkeypatch.setattr(
+            server.ValidationEngine,
+            "validate_all_detailed",
+            lambda self, context: [_outcome("skip"), _outcome("pass", "branch")],
+        )
+        result = server._run_checks(
+            ["message", "branch"], ValidationContext(stdin_text="x"), server._merge_config(None)
+        )
+        assert result["status"] == "pass"
+
+    def test_a_warned_rule_is_counted_and_does_not_fail_the_run(self) -> None:
+        """Real engine: the config asks for the message rule as a warning."""
+        from commit_check.engine import ValidationContext
+
+        cfg = server._merge_config({"warn": ["message"]})
+        result = server._run_checks(
+            ["message"], ValidationContext(stdin_text="not conventional", config=cfg), cfg
+        )
+        assert result["status"] == "pass"
+        assert result["warnings"] == 1
+        assert result["checks"][0]["status"] == "warn"
+        assert result["checks"][0]["error"]
+
+    def test_a_failure_still_fails(self) -> None:
+        from commit_check.engine import ValidationContext
+
+        cfg = server._merge_config(None)
+        result = server._run_checks(
+            ["message"], ValidationContext(stdin_text="not conventional", config=cfg), cfg
+        )
+        assert result["status"] == "fail"
+        assert result["warnings"] == 0
+
+    def test_the_combined_tools_reduce_with_the_same_rule(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """validate_commit_context, validate_author_info with both inputs and
+        validate_repository_state used to carry their own copy of the reducer."""
+
+        def skipped(check_names, context, config):
+            return server._summarize(
+                [
+                    {"check": cn, "status": "skip", "value": "", "error": "", "suggest": "", "fix": ""}
+                    for cn in check_names
+                ]
+            )
+
+        monkeypatch.setattr(server, "_run_checks", skipped)
+
+        context = server._validate_all(message="x", branch="main")
+        assert context["status"] == "skip"
+        assert context["warnings"] == 0
+
+        author = server._validate_author(name="A", email="a@b.c")
+        assert author["status"] == "skip"
+        assert "warnings" in author
+
+
+# ---------------------------------------------------------------------------
 # _run_checks: the "fix" key
 # ---------------------------------------------------------------------------
 
@@ -930,29 +1031,6 @@ class TestRunChecksFixField:
         )
         assert result["checks"][0]["fix"] == "fix: add x"
         assert result["checks"][0]["suggest"] == 'Use "fix: add x"'
-
-    def test_an_engine_without_the_field_yields_an_empty_fix(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from commit_check.engine import ValidationContext
-
-        class OldOutcome:
-            def to_dict(self) -> dict[str, str]:
-                return {
-                    "check": "message",
-                    "status": "fail",
-                    "value": "Fix: add x",
-                    "error": "Not conventional",
-                    "suggest": "Use a conventional type",
-                }
-
-        monkeypatch.setattr(
-            server.ValidationEngine, "validate_all_detailed", lambda self, context: [OldOutcome()]
-        )
-        result = server._run_checks(
-            ["message"], ValidationContext(stdin_text="Fix: add x"), server._merge_config(None)
-        )
-        assert result["checks"][0]["fix"] == ""
 
 
 # ---------------------------------------------------------------------------

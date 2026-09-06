@@ -29,11 +29,12 @@ All validation tools return the same structured commit-check result shape:
 
 ```json
 {
-  "status": "pass|fail",
+  "status": "pass|fail|skip",
+  "warnings": 0,
   "checks": [
     {
       "check": "message",
-      "status": "pass|fail",
+      "status": "pass|fail|warn|skip",
       "value": "...",
       "error": "...",
       "suggest": "...",
@@ -43,12 +44,17 @@ All validation tools return the same structured commit-check result shape:
 }
 ```
 
+Only `fail` is a rejection. A check reports `skip` when it did not run — the
+author matched `ignore_authors`, or there was nothing to check — and the
+top-level `status` is `skip` only when **every** check skipped, so a run that
+validated nothing is never reported as a pass. A check reports `warn` when the
+config lists it under `warn`: the finding is complete, but it does not fail
+the run, the top-level `status` stays `pass`, and `warnings` counts them.
+
 `suggest` is the advice a person reads. `fix` is the corrected value itself,
 present only when the correction is unambiguous — `Fix: add x` comes back with
 `"fix": "fix: add x"` — and an empty string otherwise, so an agent can apply
 a non-empty `fix` as it stands and fall back to `suggest` when it is empty.
-Populating `fix` needs a commit-check release that carries the field; with an
-older commit-check the key is present and always empty.
 
 A call that cannot run at all — an empty `message`, a `repo_path` that does not
 exist, a `repo_path` that is not a git repository when the tool has to read git
