@@ -31,7 +31,8 @@ from . import __version__
 
 INSTRUCTIONS = (
     "commit-check-mcp validates commit messages, branch names, author metadata and push safety "
-    "against commit-check rules. Every tool is read-only.\n"
+    "against commit-check rules. Every tool leaves your working tree and commits untouched; the "
+    "two push checks may run git fetch to resolve SHAs.\n"
     "Workflow: (1) validate FIRST, before you commit or push, with the matching validate_* tool "
     "(pass repo_path so the repository's own cchk.toml/commit-check.toml is used). "
     "(2) Read the top-level status: only 'fail' is a rejection; 'skip' means nothing was validated "
@@ -63,19 +64,22 @@ RESULT_SHAPE = (
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 
-def _tool(title: str, *, open_world: bool = False) -> Callable[[_F], _F]:
+def _tool(title: str, *, fetches: bool = False) -> Callable[[_F], _F]:
     """Register a commit-check tool with the hints every one of them shares.
 
-    All tools are read-only and idempotent. ``open_world`` marks the two that
-    can reach the network: the force-push check runs ``git fetch`` when a SHA
-    is not known locally. The function docstring becomes the tool description,
-    with ``{result_shape}`` replaced by :data:`RESULT_SHAPE`.
+    No tool changes the working tree or the commits, and repeating a call has
+    no further effect, so every tool is idempotent and none is destructive.
+    ``fetches`` marks the two that run the force-push check: to resolve a SHA it
+    does not know locally it may run ``git fetch``, which reaches the network
+    and updates FETCH_HEAD and remote-tracking refs, so those two are neither
+    read-only nor closed-world. The function docstring becomes the tool
+    description, with ``{result_shape}`` replaced by :data:`RESULT_SHAPE`.
     """
     annotations = ToolAnnotations(
-        readOnlyHint=True,
+        readOnlyHint=not fetches,
         destructiveHint=False,
         idempotentHint=True,
-        openWorldHint=open_world,
+        openWorldHint=fetches,
     )
 
     def register(fn: _F) -> _F:
@@ -171,10 +175,11 @@ PushRefsParam = Annotated[
             "Refs about to be pushed, in git pre-push hook stdin format, one ref per line: "
             "'<local_ref> <local_sha> <remote_ref> <remote_sha>', e.g. "
             "'refs/heads/main 1a2b3c... refs/heads/main 9f8e7d...'. A remote_sha of 40 zeros "
-            "means a new branch (never a force push). SHAs must be resolvable in repo_path (the "
-            "check runs git merge-base and may fetch the remote ref); unresolvable SHAs cannot be "
-            "judged and pass. Omit to check the current branch of repo_path against its upstream "
-            "instead. Must be non-empty when provided."
+            "means a new branch (never a force push). Every other SHA must resolve to a commit in "
+            "repo_path (the check runs git merge-base and may fetch the remote ref first); a SHA "
+            "that still cannot be resolved is a tool error, not a pass, so fetch it first. Omit to "
+            "check the current branch of repo_path against its upstream instead. Must be non-empty "
+            "when provided."
         )
     ),
 ]
@@ -383,6 +388,43 @@ def _validate_branch(
         )
 
 
+ZERO_SHA = "0" * 40
+
+
+def _require_push_shas_resolvable(push_refs: str) -> None:
+    """Fail when a pushed SHA is not a commit in the current working directory.
+
+    The force-push rule asks ``git merge-base`` whether the remote SHA is an
+    ancestor of the local one. When either SHA is unknown, git exits 128 and,
+    after commit-check's own attempt to fetch the remote ref, the rule falls
+    through to PASS. Nothing was judged in that case, so the pass must not
+    reach the caller. This runs after the rule, so a SHA the rule's fetch
+    brought in counts as resolved. The 40-zero placeholder for a new branch is
+    not a commit and is skipped.
+    """
+    for line in push_refs.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        for sha in (parts[1], parts[3]):
+            if sha == ZERO_SHA:
+                continue
+            try:
+                result = subprocess.run(
+                    ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except OSError as e:
+                raise ToolError(f"git is not available to inspect push_refs: {e}") from e
+            if result.returncode != 0:
+                raise ToolError(
+                    f"push_refs: {sha} is not a commit in the repository; fetch it first, "
+                    "the force-push check cannot be judged"
+                )
+
+
 def _validate_push(
     push_refs: str | None = None,
     *,
@@ -390,11 +432,17 @@ def _validate_push(
     repo_path: Path | None = None,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Validate push ref updates against commit-check force-push protection."""
+    """Validate push ref updates against commit-check force-push protection.
+
+    With explicit ``push_refs``, a pass is only returned once every SHA in
+    them has been confirmed to be a commit in the repository; the
+    upstream-fallback path (``push_refs`` is ``None``) reads HEAD and the
+    upstream ref, which always resolve.
+    """
     cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
     cfg.setdefault("push", {})["allow_force_push"] = False
     with _working_directory(repo_path):
-        return _run_checks(
+        result = _run_checks(
             ["no_force_push"],
             ValidationContext(
                 stdin_text=push_refs,
@@ -403,6 +451,9 @@ def _validate_push(
             ),
             cfg,
         )
+        if push_refs and result["status"] != "fail":
+            _require_push_shas_resolvable(push_refs)
+    return result
 
 
 def _validate_author(
@@ -619,7 +670,7 @@ def validate_author_info(
     )
 
 
-@_tool("Validate push safety", open_world=True)
+@_tool("Validate push safety", fetches=True)
 def validate_push_safety(
     push_refs: PushRefsParam = None,
     config: ConfigParam = None,
@@ -628,9 +679,10 @@ def validate_push_safety(
 ) -> dict[str, Any]:
     """Check that a pending push is not a force push (rule CC301, no_force_push): fails when a
     remote_sha is not an ancestor of its local_sha, i.e. the push would rewrite remote history.
-    Read-only for your working tree and commits; it may run `git fetch <remote> <ref>` to resolve
-    SHAs. Force pushes are always rejected by this tool; push.allow_force_push in config cannot
-    re-enable them here.
+    Leaves your working tree and commits untouched, but may run `git fetch <remote> <ref>` to
+    resolve SHAs, which updates FETCH_HEAD and remote-tracking refs. A SHA that cannot be resolved
+    even then is a tool error, never a pass. Force pushes are always rejected by this tool;
+    push.allow_force_push in config cannot re-enable them here.
 
     {result_shape}
 
@@ -703,7 +755,7 @@ def validate_commit_context(
     )
 
 
-@_tool("Validate repository state", open_world=True)
+@_tool("Validate repository state", fetches=True)
 def validate_repository_state(
     repo_path: Annotated[
         str | None,
@@ -739,15 +791,16 @@ def validate_repository_state(
         Field(
             description=(
                 "Also check that pushing the current branch to its upstream would not be a "
-                "force push; may run git fetch, and passes when the branch has no upstream. "
-                "Default false."
+                "force push; may run git fetch (updating FETCH_HEAD), and passes when the branch "
+                "has no upstream. Default false."
             )
         ),
     ] = False,
 ) -> dict[str, Any]:
     """Validate what is already in a local git repository: the latest commit's message and author,
     the checked-out branch name and, optionally, whether pushing that branch to its upstream would
-    be a force push. Reads git data only; it may run `git fetch` for the push check.
+    be a force push. Leaves the working tree and commits untouched; the push check may run
+    `git fetch`, which updates FETCH_HEAD and remote-tracking refs.
 
     {result_shape}
 

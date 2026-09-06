@@ -64,9 +64,14 @@ a non-empty `fix` as it stands and fall back to `suggest` when it is empty.
 A call that cannot run at all — an empty `message`, a `repo_path` that does not
 exist, a `repo_path` that is not a git repository when the tool has to read git
 state (see the `repo_path` note under [Tool Usage](#tool-usage)), a malformed or rejected
-commit-check config — is returned as an MCP tool error (`is_error`) whose text
-names the problem, for example `repo_path is not a git repository: /path/to/dir`
-or `invalid commit-check config: ...`, rather than as a `pass`/`fail` result.
+commit-check config, a `push_refs` SHA that is not a commit in `repo_path` even
+after the force-push check tried to fetch it — is returned as an MCP tool error
+(`is_error`) whose text names the problem, for example
+`repo_path is not a git repository: /path/to/dir`,
+`invalid commit-check config: ...` or
+`push_refs: <sha> is not a commit in the repository; fetch it first, the force-push check cannot be judged`,
+rather than as a `pass`/`fail` result. In particular a push whose SHAs cannot
+be judged is never reported as a pass.
 
 ## Installation
 
@@ -275,17 +280,21 @@ Every parameter carries a description in the tool's JSON input schema, so an
 MCP client (and the model behind it) can see what each one expects without
 reading this file: for example `push_refs` documents the git pre-push line
 format `<local_ref> <local_sha> <remote_ref> <remote_sha>`. Each tool also has
-a display `title` and is annotated `readOnlyHint: true` (with `openWorldHint:
-true` only on `validate_push_safety` and `validate_repository_state`, which may
-run `git fetch` to resolve push SHAs), so clients that gate tool calls on those
-hints can auto-approve them. The server's `instructions` describe the intended
+a display `title` and MCP tool annotations: `destructiveHint: false` and
+`idempotentHint: true` everywhere, `readOnlyHint: true` on the six tools that
+only read, and `readOnlyHint: false` with `openWorldHint: true` on
+`validate_push_safety` and `validate_repository_state`, because the force-push
+check may run `git fetch` to resolve a SHA, which updates `FETCH_HEAD` and
+remote-tracking refs (the working tree and commits are never touched). Clients
+that gate tool calls on those hints can auto-approve the read-only six. The
+server's `instructions` describe the intended
 loop: validate first, read `status` (only `fail` rejects, `skip` is not
 approval), apply a non-empty `fix` verbatim or follow `suggest`, then validate
 again.
 
 The common optional arguments are:
 
-- `repo_path`: repository directory to validate against; it must be a git repository when the tool reads git state (branch, author, or push refs omitted, or `validate_repository_state`), and may be a plain directory holding a config file when every value is supplied
+- `repo_path`: repository directory to validate against; it must be a git repository when the tool reads git state (branch, author, or push refs omitted, `validate_repository_state`, or `push_refs` given, whose SHAs must resolve there), and may be a plain directory holding a config file when every other value is supplied
 - `config_path`: explicit TOML config file, used instead of the repository's own `cchk.toml`/`commit-check.toml`; relative paths resolve from `repo_path`
 - `config`: ad-hoc config overrides merged on top of defaults and repo config
 
