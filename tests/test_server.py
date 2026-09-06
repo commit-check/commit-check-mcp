@@ -208,11 +208,11 @@ class TestValidateBranch:
 # ---------------------------------------------------------------------------
 
 class TestValidatePush:
-    def test_no_force_push_rule_is_enforced(self) -> None:
-        result = server._validate_push("refs/heads/main abc refs/heads/main def")
-        # The rule is enabled, but depending on context it may pass or fail
-        assert "status" in result
-        assert isinstance(result["checks"], list)
+    def test_unresolvable_shas_are_an_error_not_a_pass(self) -> None:
+        # git merge-base exits 128 on SHAs it does not know and the rule falls
+        # through to PASS; the server must not hand that pass to the caller.
+        with pytest.raises(ToolError, match="push_refs: abc is not a commit in the repository"):
+            server._validate_push("refs/heads/main abc refs/heads/main def")
 
     def test_with_push_refs_none_and_patch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[dict] = []
@@ -1194,3 +1194,177 @@ class TestBlankPushRefs:
     def test_blank_push_refs_via_tool_call(self) -> None:
         with pytest.raises(ToolError, match="push_refs cannot be empty when provided"):
             _call_tool("validate_push_safety", push_refs="   ")
+
+
+# ---------------------------------------------------------------------------
+# What an MCP client is told about the tools: titles, annotations, schema
+# descriptions, server version and instructions
+# ---------------------------------------------------------------------------
+
+FETCHING_TOOLS = {"validate_push_safety", "validate_repository_state"}
+
+
+def _list_tools() -> list:
+    """List tools the way an MCP client does, through the server's list path."""
+    return asyncio.run(server.mcp.list_tools())
+
+
+class TestToolMetadata:
+    def test_every_tool_has_a_title_and_non_destructive_annotations(self) -> None:
+        tools = _list_tools()
+        assert len(tools) == 8
+        for tool in tools:
+            assert tool.title, tool.name
+            assert tool.annotations is not None, tool.name
+            assert tool.annotations.destructive_hint is False, tool.name
+            assert tool.annotations.idempotent_hint is True, tool.name
+
+    def test_only_the_tools_that_may_fetch_are_not_read_only(self) -> None:
+        # The force-push check may run git fetch, which writes FETCH_HEAD and
+        # remote-tracking refs, so those two tools cannot claim to be read-only.
+        seen = set()
+        for tool in _list_tools():
+            fetches = tool.name in FETCHING_TOOLS
+            assert tool.annotations.read_only_hint is (not fetches), tool.name
+            assert tool.annotations.open_world_hint is fetches, tool.name
+            if fetches:
+                seen.add(tool.name)
+        assert seen == FETCHING_TOOLS
+
+    def test_every_parameter_has_a_description(self) -> None:
+        seen = 0
+        for tool in _list_tools():
+            for name, prop in tool.input_schema.get("properties", {}).items():
+                seen += 1
+                assert prop.get("description"), f"{tool.name}.{name} has no description"
+        assert seen > 0
+
+    def test_push_refs_description_explains_the_pre_push_line_format(self) -> None:
+        tool = next(t for t in _list_tools() if t.name == "validate_push_safety")
+        description = tool.input_schema["properties"]["push_refs"]["description"]
+        assert "<local_ref> <local_sha> <remote_ref> <remote_sha>" in description
+        assert "40 zeros" in description
+        assert "upstream" in description
+        assert "non-empty when provided" in description
+        assert "tool error, not a pass" in description
+
+    def test_validation_tools_describe_the_result_shape(self) -> None:
+        validators = [t for t in _list_tools() if t.name.startswith("validate_")]
+        assert len(validators) == 6
+        for tool in validators:
+            for term in ("rule_id", "docs_url", "'warn'", "'skip'", "fix", "suggest"):
+                assert term in tool.description, f"{tool.name} does not mention {term}"
+
+    def test_push_safety_says_force_pushes_are_always_rejected(self) -> None:
+        tool = next(t for t in _list_tools() if t.name == "validate_push_safety")
+        assert "always rejected" in tool.description
+        assert "configure via" not in tool.description
+
+    def test_server_reports_its_version(self) -> None:
+        assert server.mcp.version == server.__version__
+        assert server.mcp.version != ""
+
+    def test_instructions_describe_the_validate_fix_workflow(self) -> None:
+        instructions = server.mcp.instructions
+        assert instructions is not None
+        assert "validate" in instructions
+        assert "fix" in instructions
+        assert "describe_validation_rules" in instructions
+        assert "read-only" not in instructions
+
+
+# ---------------------------------------------------------------------------
+# validate_push_safety: a push whose SHAs cannot be judged is not a pass
+# ---------------------------------------------------------------------------
+
+FAKE_SHA_A = "0123456789abcdef0123456789abcdef01234567"
+FAKE_SHA_B = "fedcba9876543210fedcba9876543210fedcba98"
+ZERO_SHA = "0" * 40
+
+
+def _rev(repo: Path, ref: str) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _repo_with_two_commits(root: Path) -> Path:
+    repo = _repo_with_commit(root, "feat: first")
+    (repo / "file.txt").write_text("more\n")
+    _git(repo, "commit", "-q", "-am", "feat: second")
+    return repo
+
+
+class TestPushRefsMustResolve:
+    def test_fake_shas_are_a_tool_error(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        with pytest.raises(ToolError, match=f"push_refs: {FAKE_SHA_A} is not a commit"):
+            _call_tool(
+                "validate_push_safety",
+                push_refs=f"refs/heads/main {FAKE_SHA_A} refs/heads/main {FAKE_SHA_B}",
+                repo_path=str(repo),
+            )
+
+    def test_fake_remote_sha_alone_is_a_tool_error(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        head = _rev(repo, "HEAD")
+        with pytest.raises(ToolError, match=f"push_refs: {FAKE_SHA_B} is not a commit"):
+            server.validate_push_safety(
+                push_refs=f"refs/heads/main {head} refs/heads/main {FAKE_SHA_B}",
+                repo_path=str(repo),
+            )
+
+    def test_fast_forward_pair_passes(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        head, parent = _rev(repo, "HEAD"), _rev(repo, "HEAD~1")
+        result = server.validate_push_safety(
+            push_refs=f"refs/heads/main {head} refs/heads/main {parent}",
+            repo_path=str(repo),
+        )
+        assert result["status"] == "pass"
+        assert [c["check"] for c in result["checks"]] == ["no_force_push"]
+
+    def test_rewriting_remote_history_fails(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        head, parent = _rev(repo, "HEAD"), _rev(repo, "HEAD~1")
+        result = server.validate_push_safety(
+            push_refs=f"refs/heads/main {parent} refs/heads/main {head}",
+            repo_path=str(repo),
+        )
+        assert result["status"] == "fail"
+        assert result["checks"][0]["check"] == "no_force_push"
+
+    def test_new_branch_zero_remote_sha_passes(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        head = _rev(repo, "HEAD")
+        result = server.validate_push_safety(
+            push_refs=f"refs/heads/topic {head} refs/heads/topic {ZERO_SHA}",
+            repo_path=str(repo),
+        )
+        assert result["status"] == "pass"
+
+    def test_engine_failure_wins_over_resolvability(self, tmp_path: Path) -> None:
+        # The first line is a real force push; the engine reports fail and the
+        # unresolvable SHA on the second line does not turn that into an error.
+        repo = _repo_with_two_commits(tmp_path)
+        head, parent = _rev(repo, "HEAD"), _rev(repo, "HEAD~1")
+        result = server.validate_push_safety(
+            push_refs=(
+                f"refs/heads/main {parent} refs/heads/main {head}\n"
+                f"refs/heads/other {FAKE_SHA_A} refs/heads/other {FAKE_SHA_B}"
+            ),
+            repo_path=str(repo),
+        )
+        assert result["status"] == "fail"
+
+    def test_repository_state_include_push_is_unaffected(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_commits(tmp_path)
+        result = server.validate_repository_state(
+            repo_path=str(repo),
+            include_message=False,
+            include_branch=False,
+            include_author=False,
+            include_push=True,
+        )
+        assert result["status"] == "pass"
+        assert [c["check"] for c in result["checks"]] == ["no_force_push"]
