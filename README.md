@@ -51,10 +51,11 @@ Populating `fix` needs a commit-check release that carries the field; with an
 older commit-check the key is present and always empty.
 
 A call that cannot run at all — an empty `message`, a `repo_path` that does not
-exist or is not a git repository, a malformed or rejected commit-check config —
-is returned as an MCP tool error (`is_error`) whose text names the problem, for
-example `repo_path is not a git repository: /path/to/dir` or
-`invalid commit-check config: ...`, rather than as a `pass`/`fail` result.
+exist, a `repo_path` that is not a git repository when the tool has to read git
+state (see the `repo_path` note under [Tool Usage](#tool-usage)), a malformed or rejected
+commit-check config — is returned as an MCP tool error (`is_error`) whose text
+names the problem, for example `repo_path is not a git repository: /path/to/dir`
+or `invalid commit-check config: ...`, rather than as a `pass`/`fail` result.
 
 ## Installation
 
