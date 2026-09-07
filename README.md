@@ -100,22 +100,10 @@ uvx commit-check-mcp
 
 > **Tip**: If `uv` is not installed, get it via `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
----
+### Configure your client
 
-### Claude Desktop
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Claude Code CLI
+Every client below launches the same command; only the config file and, for a
+few clients, the wrapper key differ. This is the object to register:
 
 ```json
 {
@@ -128,127 +116,26 @@ uvx commit-check-mcp
 }
 ```
 
-Add to your `~/.claude/settings.json` or project-level `.claude/settings.local.json`.
+| Client | Where it goes | Notes |
+|---|---|---|
+| Claude Code | `claude mcp add commit-check -- uvx commit-check-mcp` | Add `--scope project` to write a shareable `.mcp.json` at the repo root (`--scope user` makes it available in all your projects). You can also commit a `.mcp.json` containing the block above; `"type": "stdio"` may be added inside the server object. MCP servers are **not** configured in `~/.claude/settings.json`. |
+| Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows `%APPDATA%\Claude\claude_desktop_config.json` | Block above as-is; restart Claude Desktop. |
+| Cursor | project `.cursor/mcp.json` or global `~/.cursor/mcp.json` | Block above as-is (or **Settings → Cursor Settings → MCP → Add new MCP server** with command `uvx commit-check-mcp`). |
+| VS Code (Copilot agent mode) | `.vscode/mcp.json` | **Different key**: `{"servers": {"commit-check": {"type": "stdio", "command": "uvx", "args": ["commit-check-mcp"]}}}` |
+| Cline | MCP Servers panel → Configure → `cline_mcp_settings.json` (check your client's docs) | Block above as-is. |
+| Roo Code | project `.roo/mcp.json` or global `mcp_settings.json` (**Edit Global MCP**) | Block above as-is; optional `"alwaysAllow": [...]`. |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` (check your client's docs) | Block above as-is. |
+| Continue | `config.yaml` (or a file in `.continue/mcpServers/`) | **YAML list** under `mcpServers:`, see below. Continue also picks up the JSON block above when dropped into `.continue/mcpServers/`. |
+| Zed | `~/.config/zed/settings.json` | **Different key**: `{"context_servers": {"commit-check": {"command": "uvx", "args": ["commit-check-mcp"]}}}` |
+| Anything else | your client's MCP config | If the client cannot run `uvx`: `pip install commit-check-mcp`, then set `"command"` to the absolute path printed by `which commit-check-mcp` and drop `args`. |
 
-### Cursor
+Continue's `config.yaml` entry in full:
 
-In Cursor, go to **Settings → Cursor Settings → MCP → Add new MCP server** and paste:
-
-| Field | Value |
-|---|---|
-| **Name** | `commit-check` |
-| **Type** | `command` |
-| **Command** | `uvx commit-check-mcp` |
-
-Or add to your project's `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Windsurf
-
-Add to your `~/.codeium/windsurf/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Cline (VS Code)
-
-Add a new MCP server in the Cline extension settings:
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Continue.dev (VS Code / JetBrains)
-
-Add to your `~/.continue/config.json`:
-
-```json
-{
-  "experimental": {
-    "mcpServers": {
-      "commit-check": {
-        "command": "uvx",
-        "args": ["commit-check-mcp"]
-      }
-    }
-  }
-}
-```
-
-### Roo Code
-
-Add to your Roo Code MCP settings:
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Zed
-
-Add to your `~/.config/zed/settings.json`:
-
-```json
-{
-  "mcp_servers": {
-    "commit-check": {
-      "command": "uvx",
-      "args": ["commit-check-mcp"]
-    }
-  }
-}
-```
-
-### Generic / Any MCP Client
-
-If your client does not support `uvx`, use `pip` and the direct path:
-
-```bash
-pip install commit-check-mcp
-which commit-check-mcp
-```
-
-Then use the absolute path in your config:
-
-```json
-{
-  "mcpServers": {
-    "commit-check": {
-      "command": "/path/to/commit-check-mcp"
-    }
-  }
-}
+```yaml
+mcpServers:
+  - name: commit-check
+    command: uvx
+    args: ["commit-check-mcp"]
 ```
 
 ## Run Manually
