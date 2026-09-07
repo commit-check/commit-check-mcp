@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import os
 import subprocess
+import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from importlib.metadata import version
@@ -256,6 +257,12 @@ def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> s
     return str(resolved)
 
 
+# os.chdir is process-global and the SDK runs sync tools on worker threads
+# concurrently, so every chdir window is serialised on one lock. Long-term fix:
+# pass cwd to git and to the config loader instead of changing directory.
+_CWD_LOCK = threading.Lock()
+
+
 @contextmanager
 def _working_directory(repo_path: Path | None):
     """Temporarily switch working directory for repo-relative config and git checks."""
@@ -263,12 +270,13 @@ def _working_directory(repo_path: Path | None):
         yield
         return
 
-    original_cwd = Path.cwd()
-    os.chdir(repo_path)
-    try:
-        yield
-    finally:
-        os.chdir(original_cwd)
+    with _CWD_LOCK:
+        original_cwd = Path.cwd()
+        os.chdir(repo_path)
+        try:
+            yield
+        finally:
+            os.chdir(original_cwd)
 
 
 def _merge_config(

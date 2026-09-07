@@ -1394,3 +1394,46 @@ class TestPushRefsMustResolve:
         )
         assert result["status"] == "pass"
         assert [c["check"] for c in result["checks"]] == ["no_force_push"]
+
+
+# ---------------------------------------------------------------------------
+# Concurrent tool calls with different repo_path values must not see each
+# other's working directory (os.chdir is process-global)
+# ---------------------------------------------------------------------------
+
+def _repo_on_branch(root: Path, name: str, branch: str) -> Path:
+    repo = root / name
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", branch)
+    (repo / "file.txt").write_text("content\n")
+    _git(repo, "add", "file.txt")
+    _git(repo, "commit", "-q", "-m", "feat: init")
+    return repo
+
+
+class TestConcurrentWorkingDirectory:
+    def test_parallel_calls_read_their_own_repo(self, tmp_path: Path) -> None:
+        # The SDK runs sync tools on worker threads, so two in-flight calls
+        # each chdir the one process. Without the lock about half of the
+        # results below report the other repository's branch as `pass`.
+        repos = {
+            _repo_on_branch(tmp_path, "a", "feature/alpha"): "feature/alpha",
+            _repo_on_branch(tmp_path, "b", "bugfix/beta"): "bugfix/beta",
+        }
+        start_cwd = Path.cwd()
+
+        async def one_round() -> list[object]:
+            return await asyncio.gather(
+                *(
+                    server.mcp.call_tool("validate_branch_name", {"repo_path": str(repo)})
+                    for repo in repos
+                )
+            )
+
+        for _ in range(30):
+            results = asyncio.run(one_round())
+            assert Path.cwd() == start_cwd
+            for repo, result in zip(repos, results, strict=True):
+                checks = result.structured_content["checks"]
+                branch = next(c["value"] for c in checks if c["check"] == "branch")
+                assert branch == repos[repo], f"{repo} reported branch {branch!r}"
