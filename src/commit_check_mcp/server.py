@@ -205,7 +205,10 @@ def _normalize_repo_path(repo_path: str | None) -> Path | None:
     if not normalized:
         raise ToolError("repo_path cannot be empty when provided")
 
-    path = Path(normalized).expanduser().resolve()
+    path = Path(normalized).expanduser()
+    if not path.is_absolute():
+        path = _at_rest_cwd() / path
+    path = path.resolve()
     if not path.exists():
         raise ToolError(f"repo_path does not exist: {path}")
     if not path.is_dir():
@@ -220,7 +223,7 @@ def _require_git_repo(repo_path: Path | None) -> None:
     ``git``; outside a repository those reads come back empty and every rule
     passes vacuously, so tools that will consult git call this first.
     """
-    directory = repo_path if repo_path is not None else Path.cwd()
+    directory = repo_path if repo_path is not None else _at_rest_cwd()
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -246,8 +249,8 @@ def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> s
         raise ToolError("config_path cannot be empty when provided")
 
     path = Path(normalized).expanduser()
-    if not path.is_absolute() and repo_path is not None:
-        path = repo_path / path
+    if not path.is_absolute():
+        path = (repo_path if repo_path is not None else _at_rest_cwd()) / path
 
     resolved = path.resolve()
     if not resolved.exists():
@@ -261,6 +264,20 @@ def _normalize_config_path(config_path: str | None, repo_path: Path | None) -> s
 # concurrently, so every chdir window is serialised on one lock. Long-term fix:
 # pass cwd to git and to the config loader instead of changing directory.
 _CWD_LOCK = threading.Lock()
+
+
+def _at_rest_cwd() -> Path:
+    """The process cwd with no chdir window in flight.
+
+    A relative ``repo_path`` or ``config_path``, and the git check for a call
+    without ``repo_path``, must resolve against the directory the server was
+    started in, not against whatever another worker thread has temporarily
+    switched to. Taking the lock guarantees no window is open. Call it before
+    entering :func:`_working_directory`, never inside (the lock is not
+    re-entrant).
+    """
+    with _CWD_LOCK:
+        return Path.cwd()
 
 
 @contextmanager
