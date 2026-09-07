@@ -127,11 +127,14 @@ few clients, the wrapper key differ. This is the object to register:
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` (check your client's docs) | Block above as-is. |
 | Continue | `config.yaml` (or a file in `.continue/mcpServers/`) | **YAML list** under `mcpServers:`, see below. Continue also picks up the JSON block above when dropped into `.continue/mcpServers/`. |
 | Zed | `~/.config/zed/settings.json` | **Different key**: `{"context_servers": {"commit-check": {"command": "uvx", "args": ["commit-check-mcp"]}}}` |
-| Anything else | your client's MCP config | If the client cannot run `uvx`: `pip install commit-check-mcp`, then set `"command"` to the absolute path printed by `which commit-check-mcp` and drop `args`. |
+| Anything else | your client's MCP config | If the client cannot run `uvx`: `pip install commit-check-mcp`, then set `"command"` to the absolute path of the installed binary and drop `args`. Find it with `which commit-check-mcp` (macOS/Linux), `where commit-check-mcp` (Windows cmd) or `Get-Command commit-check-mcp \| Select-Object -ExpandProperty Source` (PowerShell). |
 
-Continue's `config.yaml` entry in full:
+Continue's `config.yaml` entry in full (`name`, `version` and `schema` are required by Continue; drop them if you are adding only the `mcpServers` fragment to an existing file, or save this as a standalone file in `.continue/mcpServers/`):
 
 ```yaml
+name: commit-check
+version: 0.0.1
+schema: v1
 mcpServers:
   - name: commit-check
     command: uvx

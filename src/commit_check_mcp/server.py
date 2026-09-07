@@ -266,11 +266,12 @@ _CWD_LOCK = threading.Lock()
 @contextmanager
 def _working_directory(repo_path: Path | None):
     """Temporarily switch working directory for repo-relative config and git checks."""
-    if repo_path is None:
-        yield
-        return
-
+    # The lock is held even when repo_path is None: a tool that reads the
+    # process cwd must not observe another thread's temporary chdir.
     with _CWD_LOCK:
+        if repo_path is None:
+            yield
+            return
         original_cwd = Path.cwd()
         os.chdir(repo_path)
         try:
