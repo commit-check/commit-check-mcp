@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
+import os
+import subprocess
 from collections.abc import Callable
 from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
-import inspect
-import os
-import subprocess
 from typing import Annotated, Any, TypeVar
 
 from commit_check import __version__ as commit_check_version
@@ -76,10 +76,10 @@ def _tool(title: str, *, fetches: bool = False) -> Callable[[_F], _F]:
     description, with ``{result_shape}`` replaced by :data:`RESULT_SHAPE`.
     """
     annotations = ToolAnnotations(
-        readOnlyHint=not fetches,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=fetches,
+        read_only_hint=not fetches,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=fetches,
     )
 
     def register(fn: _F) -> _F:

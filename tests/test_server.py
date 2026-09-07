@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import asyncio
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
-
-from commit_check_mcp import server
 from mcp.server.mcpserver.exceptions import ToolError
 
+from commit_check_mcp import server
 
 # ---------------------------------------------------------------------------
 # _normalize_config
@@ -125,7 +124,13 @@ class TestValidateMessage:
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "cchk.toml").write_text(
-            "[commit]\nallow_commit_types = []\nallow_merge_commits = true\nallow_revert_commits = true\nallow_empty_commits = true\nallow_fixup_commits = true\nallow_wip_commits = true"
+            "[commit]\n"
+            "allow_commit_types = []\n"
+            "allow_merge_commits = true\n"
+            "allow_revert_commits = true\n"
+            "allow_empty_commits = true\n"
+            "allow_fixup_commits = true\n"
+            "allow_wip_commits = true"
         )
         result = server._validate_message(
             "feat: add new feature",
@@ -345,7 +350,13 @@ class TestValidateAuthor:
             return {
                 "status": "fail",
                 "checks": [
-                    {"check": cn, "status": "fail", "value": "", "error": "bad", "suggest": "fix it"}
+                    {
+                        "check": cn,
+                        "status": "fail",
+                        "value": "",
+                        "error": "bad",
+                        "suggest": "fix it",
+                    }
                     for cn in check_names
                 ],
             }
@@ -526,7 +537,9 @@ class TestValidateCommitMessage:
         with pytest.raises(ToolError, match="non-empty"):
             server.validate_commit_message("   ")
 
-    def test_valid_message_with_repo_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_valid_message_with_repo_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
 
@@ -690,7 +703,9 @@ class TestValidateCommitContext:
     def test_all_fields_forwards(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def fake_validate_all(message, branch, author_name, author_email, *, config, repo_path, config_path):
+        def fake_validate_all(
+            message, branch, author_name, author_email, *, config, repo_path, config_path
+        ):
             captured["message"] = message
             captured["branch"] = branch
             captured["author_name"] = author_name
@@ -716,7 +731,9 @@ class TestValidateCommitContext:
     def test_message_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def fake_validate_all(message, branch, author_name, author_email, *, config, repo_path, config_path):
+        def fake_validate_all(
+            message, branch, author_name, author_email, *, config, repo_path, config_path
+        ):
             captured["message"] = message
             captured["branch"] = branch
             captured["author_name"] = author_name
@@ -925,7 +942,9 @@ class TestSummarize:
             lambda self, context: [_outcome("skip"), _outcome("skip", "author_name")],
         )
         result = server._run_checks(
-            ["message", "author_name"], ValidationContext(stdin_text="x"), server._merge_config(None)
+            ["message", "author_name"],
+            ValidationContext(stdin_text="x"),
+            server._merge_config(None),
         )
         assert result["status"] == "skip"
         assert result["warnings"] == 0
@@ -975,7 +994,14 @@ class TestSummarize:
         def skipped(check_names, context, config):
             return server._summarize(
                 [
-                    {"check": cn, "status": "skip", "value": "", "error": "", "suggest": "", "fix": ""}
+                    {
+                        "check": cn,
+                        "status": "skip",
+                        "value": "",
+                        "error": "",
+                        "suggest": "",
+                        "fix": "",
+                    }
                     for cn in check_names
                 ]
             )
