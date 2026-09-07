@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import asyncio
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
-
-from commit_check_mcp import server
 from mcp.server.mcpserver.exceptions import ToolError
 
+from commit_check_mcp import server
 
 # ---------------------------------------------------------------------------
 # _normalize_config
@@ -125,7 +124,13 @@ class TestValidateMessage:
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "cchk.toml").write_text(
-            "[commit]\nallow_commit_types = []\nallow_merge_commits = true\nallow_revert_commits = true\nallow_empty_commits = true\nallow_fixup_commits = true\nallow_wip_commits = true"
+            "[commit]\n"
+            "allow_commit_types = []\n"
+            "allow_merge_commits = true\n"
+            "allow_revert_commits = true\n"
+            "allow_empty_commits = true\n"
+            "allow_fixup_commits = true\n"
+            "allow_wip_commits = true"
         )
         result = server._validate_message(
             "feat: add new feature",
@@ -345,7 +350,13 @@ class TestValidateAuthor:
             return {
                 "status": "fail",
                 "checks": [
-                    {"check": cn, "status": "fail", "value": "", "error": "bad", "suggest": "fix it"}
+                    {
+                        "check": cn,
+                        "status": "fail",
+                        "value": "",
+                        "error": "bad",
+                        "suggest": "fix it",
+                    }
                     for cn in check_names
                 ],
             }
@@ -526,7 +537,9 @@ class TestValidateCommitMessage:
         with pytest.raises(ToolError, match="non-empty"):
             server.validate_commit_message("   ")
 
-    def test_valid_message_with_repo_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_valid_message_with_repo_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
 
@@ -690,7 +703,9 @@ class TestValidateCommitContext:
     def test_all_fields_forwards(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def fake_validate_all(message, branch, author_name, author_email, *, config, repo_path, config_path):
+        def fake_validate_all(
+            message, branch, author_name, author_email, *, config, repo_path, config_path
+        ):
             captured["message"] = message
             captured["branch"] = branch
             captured["author_name"] = author_name
@@ -716,7 +731,9 @@ class TestValidateCommitContext:
     def test_message_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def fake_validate_all(message, branch, author_name, author_email, *, config, repo_path, config_path):
+        def fake_validate_all(
+            message, branch, author_name, author_email, *, config, repo_path, config_path
+        ):
             captured["message"] = message
             captured["branch"] = branch
             captured["author_name"] = author_name
@@ -925,7 +942,9 @@ class TestSummarize:
             lambda self, context: [_outcome("skip"), _outcome("skip", "author_name")],
         )
         result = server._run_checks(
-            ["message", "author_name"], ValidationContext(stdin_text="x"), server._merge_config(None)
+            ["message", "author_name"],
+            ValidationContext(stdin_text="x"),
+            server._merge_config(None),
         )
         assert result["status"] == "skip"
         assert result["warnings"] == 0
@@ -975,7 +994,14 @@ class TestSummarize:
         def skipped(check_names, context, config):
             return server._summarize(
                 [
-                    {"check": cn, "status": "skip", "value": "", "error": "", "suggest": "", "fix": ""}
+                    {
+                        "check": cn,
+                        "status": "skip",
+                        "value": "",
+                        "error": "",
+                        "suggest": "",
+                        "fix": "",
+                    }
                     for cn in check_names
                 ]
             )
@@ -1368,3 +1394,46 @@ class TestPushRefsMustResolve:
         )
         assert result["status"] == "pass"
         assert [c["check"] for c in result["checks"]] == ["no_force_push"]
+
+
+# ---------------------------------------------------------------------------
+# Concurrent tool calls with different repo_path values must not see each
+# other's working directory (os.chdir is process-global)
+# ---------------------------------------------------------------------------
+
+def _repo_on_branch(root: Path, name: str, branch: str) -> Path:
+    repo = root / name
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", branch)
+    (repo / "file.txt").write_text("content\n")
+    _git(repo, "add", "file.txt")
+    _git(repo, "commit", "-q", "-m", "feat: init")
+    return repo
+
+
+class TestConcurrentWorkingDirectory:
+    def test_parallel_calls_read_their_own_repo(self, tmp_path: Path) -> None:
+        # The SDK runs sync tools on worker threads, so two in-flight calls
+        # each chdir the one process. Without the lock about half of the
+        # results below report the other repository's branch as `pass`.
+        repos = {
+            _repo_on_branch(tmp_path, "a", "feature/alpha"): "feature/alpha",
+            _repo_on_branch(tmp_path, "b", "bugfix/beta"): "bugfix/beta",
+        }
+        start_cwd = Path.cwd()
+
+        async def one_round() -> list[object]:
+            return await asyncio.gather(
+                *(
+                    server.mcp.call_tool("validate_branch_name", {"repo_path": str(repo)})
+                    for repo in repos
+                )
+            )
+
+        for _ in range(30):
+            results = asyncio.run(one_round())
+            assert Path.cwd() == start_cwd
+            for repo, result in zip(repos, results, strict=True):
+                checks = result.structured_content["checks"]
+                branch = next(c["value"] for c in checks if c["check"] == "branch")
+                assert branch == repos[repo], f"{repo} reported branch {branch!r}"
