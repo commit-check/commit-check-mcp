@@ -1437,3 +1437,55 @@ class TestConcurrentWorkingDirectory:
                 checks = result.structured_content["checks"]
                 branch = next(c["value"] for c in checks if c["check"] == "branch")
                 assert branch == repos[repo], f"{repo} reported branch {branch!r}"
+
+
+# ---------------------------------------------------------------------------
+# message checks follow commit-check's own grouping
+# ---------------------------------------------------------------------------
+
+class TestMessageChecksFollowCommitCheck:
+    """The server runs the message checks commit-check defines, not a copy.
+
+    The list used to be written out here, twice, and the three disclose rules
+    commit-check 2.18.0 added never ran through this server: an agent asking
+    whether its commit met the project's AI policy was told it passed.
+    """
+
+    def _captured(self, monkeypatch: pytest.MonkeyPatch, call) -> set[str]:
+        seen: list[set[str]] = []
+
+        def fake_run_checks(check_names, context, config):
+            seen.append(set(check_names))
+            return {"status": "pass", "warnings": 0, "checks": []}
+
+        monkeypatch.setattr(server, "_run_checks", fake_run_checks)
+        call()
+        return seen[0]
+
+    def test_validate_message_runs_every_message_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from commit_check.rules_catalog import MESSAGE_CHECKS
+
+        checks = self._captured(monkeypatch, lambda: server._validate_message("feat: add x"))
+        assert checks == set(MESSAGE_CHECKS)
+        assert {"ai_disclosure", "ai_co_author", "ai_signoff"} <= checks
+
+    def test_validate_all_runs_every_message_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from commit_check.rules_catalog import MESSAGE_CHECKS
+
+        checks = self._captured(monkeypatch, lambda: server._validate_all(message="feat: add x"))
+        assert checks == set(MESSAGE_CHECKS)
+
+    def test_the_disclose_policy_reaches_the_agent(self) -> None:
+        """A vendor co-author line fails CC014 and CC015, with the fix written."""
+        result = server._validate_message(
+            "feat: add caching\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>",
+            config={"commit": {"ai_attribution": "disclose"}},
+        )
+        by_id = {c["rule_id"]: c for c in result["checks"]}
+        assert result["status"] == "fail"
+        assert by_id["CC014"]["status"] == "fail"
+        assert by_id["CC015"]["status"] == "fail"
+        assert by_id["CC016"]["status"] == "pass"
+        assert by_id["CC014"]["fix"] == "feat: add caching\n\nAssisted-by: Claude Opus 5"

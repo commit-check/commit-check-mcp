@@ -6,7 +6,7 @@ import inspect
 import os
 import subprocess
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
@@ -22,7 +22,7 @@ from commit_check.engine import (
     overall_status,
 )
 from commit_check.rule_builder import RuleBuilder, ValidationRule
-from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, PUSH_RULES
+from commit_check.rules_catalog import BRANCH_RULES, COMMIT_RULES, MESSAGE_CHECKS, PUSH_RULES
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
@@ -328,7 +328,7 @@ def _build_rules(config: dict[str, Any]) -> list[ValidationRule]:
 
 
 def _run_checks(
-    check_names: list[str],
+    check_names: Collection[str],
     context: ValidationContext,
     config: dict[str, Any],
 ) -> dict[str, Any]:
@@ -377,21 +377,7 @@ def _validate_message(
     cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
     with _working_directory(repo_path):
         return _run_checks(
-            [
-                "message",
-                "subject_imperative",
-                "subject_max_length",
-                "subject_min_length",
-                "subject_capitalized",
-                "require_signed_off_by",
-                "require_body",
-                "allow_merge_commits",
-                "allow_revert_commits",
-                "allow_empty_commits",
-                "allow_fixup_commits",
-                "allow_wip_commits",
-                "ai_attribution",
-            ],
+            MESSAGE_CHECKS,
             ValidationContext(stdin_text=message, config=cfg),
             cfg,
         )
@@ -539,21 +525,7 @@ def _validate_all(
         if message is not None:
             checks.extend(
                 _run_checks(
-                    [
-                        "message",
-                        "subject_imperative",
-                        "subject_max_length",
-                        "subject_min_length",
-                        "subject_capitalized",
-                        "require_signed_off_by",
-                        "require_body",
-                        "allow_merge_commits",
-                        "allow_revert_commits",
-                        "allow_empty_commits",
-                        "allow_fixup_commits",
-                        "allow_wip_commits",
-                        "ai_attribution",
-                    ],
+                    MESSAGE_CHECKS,
                     ValidationContext(stdin_text=message, config=cfg),
                     cfg,
                 )["checks"]
