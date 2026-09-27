@@ -1,109 +1,39 @@
-# commit-check-mcp
+<div align="center">
 
-[![PyPI version](https://img.shields.io/pypi/v/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
-[![Python versions](https://img.shields.io/pypi/pyversions/commit-check-mcp)](https://pypi.org/project/commit-check-mcp/)
-[![Build](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml/badge.svg)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
-[![Coverage](https://codecov.io/gh/commit-check/commit-check-mcp/graph/badge.svg)](https://codecov.io/gh/commit-check/commit-check-mcp)
-[![MCP server](https://img.shields.io/badge/MCP-server-0A7B83)](https://modelcontextprotocol.io/)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.commit--check/commit--check--mcp-7B3F00)](https://registry.modelcontextprotocol.io/?q=commit-check-mcp)
-[![Glama](https://img.shields.io/badge/Glama-commit--check--mcp-blue)](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/commit-check/.github/main/branding/banner-dark.png">
+  <img src="https://raw.githubusercontent.com/commit-check/.github/main/branding/banner-light.png" alt="Commit Check">
+</picture>
 
-Model Context Protocol (MCP) server for [commit-check](https://github.com/commit-check/commit-check).
+**Catch bad commits before they merge — inside your AI agent.**
 
-`commit-check-mcp` exposes `commit-check` as local MCP tools so an MCP client can validate commit messages, branch names, author info, push safety, and repository state.
+[![PyPI](https://img.shields.io/pypi/v/commit-check-mcp?labelColor=0b1620&logo=pypi&logoColor=white&color=2c9ccd)](https://pypi.org/project/commit-check-mcp/)
+[![CI](https://img.shields.io/github/actions/workflow/status/commit-check/commit-check-mcp/main.yml?branch=main&labelColor=0b1620&label=CI)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/commit-check/commit-check-mcp?labelColor=0b1620&color=2c9ccd&label=coverage)](https://codecov.io/gh/commit-check/commit-check-mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-2c9ccd?labelColor=0b1620)](https://registry.modelcontextprotocol.io/?q=commit-check-mcp)
+[![Glama](https://img.shields.io/badge/Glama-listed-2c9ccd?labelColor=0b1620)](https://glama.ai/mcp/servers/commit-check/commit-check-mcp)
 
-## Features
+[Docs](https://commit-check.com/guides/mcp/) ·
+[Rules](https://commit-check.com/rules/) ·
+[CLI](https://github.com/commit-check/commit-check) ·
+[GitHub Action](https://github.com/commit-check/commit-check-action) ·
+[GitHub App](https://github.com/apps/commit-check)
 
-This MCP server exposes commit-check validations as MCP tools:
+</div>
 
-- `server_health` — returns server/sdk versions
-- `validate_commit_message` — validates a commit message
-- `validate_branch_name` — validates a branch name or the current repo branch
-- `validate_push_safety` — validates that a push is not a force push (force pushes are always rejected by this tool)
-- `validate_author_info` — validates author name/email or the repo's git author config
-- `validate_commit_context` — runs combined checks in one call
-- `validate_repository_state` — validates latest commit, current branch, author state, and optional push safety for a repo
-- `describe_validation_rules` — returns the effective config and enabled rules after merging defaults and repo config
+The [Model Context Protocol](https://modelcontextprotocol.io/) server for
+[Commit Check](https://github.com/commit-check/commit-check). It gives your
+coding agent the rules your CI enforces: the agent validates its commit
+message, branch name and author before it commits or pushes, and when a
+correction is unambiguous it gets the fix to apply.
 
-All validation tools return the same structured commit-check result shape:
-
-```json
-{
-  "status": "pass|fail|skip",
-  "warnings": 0,
-  "checks": [
-    {
-      "rule_id": "CC001",
-      "check": "message",
-      "status": "pass|fail|warn|skip",
-      "value": "...",
-      "error": "...",
-      "suggest": "...",
-      "fix": "...",
-      "docs_url": "https://commit-check.com/rules/#cc001"
-    }
-  ]
-}
-```
-
-`rule_id` is the stable id of the rule that produced the check and `docs_url`
-links to its documentation.
-
-Only `fail` is a rejection. A check reports `skip` when it did not run — the
-author matched `ignore_authors`, or there was nothing to check — and the
-top-level `status` is `skip` only when **every** check skipped, so a run that
-validated nothing is never reported as a pass. A check reports `warn` when the
-config lists it under `warn`: the finding is complete, but it does not fail
-the run, the top-level `status` stays `pass`, and `warnings` counts them.
-
-`suggest` is the advice a person reads. `fix` is the corrected value itself,
-present only when the correction is unambiguous — `Fix: add x` comes back with
-`"fix": "fix: add x"` — and an empty string otherwise, so an agent can apply
-a non-empty `fix` as it stands and fall back to `suggest` when it is empty.
-
-A call that cannot run at all — an empty `message`, a `repo_path` that does not
-exist, a `repo_path` that is not a git repository when the tool has to read git
-state (see the `repo_path` note under [Tool Usage](#tool-usage)), a malformed or rejected
-commit-check config, a `push_refs` SHA that is not a commit in `repo_path` even
-after the force-push check tried to fetch it — is returned as an MCP tool error
-(`is_error`) whose text names the problem, for example
-`repo_path is not a git repository: /path/to/dir`,
-`invalid commit-check config: ...` or
-`push_refs: <sha> is not a commit in the repository; fetch it first, the force-push check cannot be judged`,
-rather than as a `pass`/`fail` result. In particular a push whose SHAs cannot
-be judged is never reported as a pass.
-
-## Installation
+## Quick start
 
 ```bash
-pip install commit-check-mcp
+claude mcp add commit-check -- uvx commit-check-mcp
 ```
 
-This installs the `commit-check-mcp` CLI entrypoint.
-
-For local development from this repository:
-
-```bash
-pip install -e .
-```
-
-## Use With An MCP Client
-
-This server runs over stdio, so it is meant to be launched by an MCP client rather than used as a long-running HTTP service.
-
-With `uvx` (recommended — no install needed):
-
-```bash
-# Run once, no pip install required
-uvx commit-check-mcp
-```
-
-> **Tip**: If `uv` is not installed, get it via `curl -LsSf https://astral.sh/uv/install.sh | sh`.
-
-### Configure your client
-
-Every client below launches the same command; only the config file and, for a
-few clients, the wrapper key differ. This is the object to register:
+Every other client launches the same command. This is the object to register:
 
 ```json
 {
@@ -115,6 +45,11 @@ few clients, the wrapper key differ. This is the object to register:
   }
 }
 ```
+
+No `uv` yet? `curl -LsSf https://astral.sh/uv/install.sh | sh` — or use
+`pip install commit-check-mcp`, as in the last row below.
+
+### Where each client keeps it
 
 | Client | Where it goes | Notes |
 |---|---|---|
@@ -141,56 +76,37 @@ mcpServers:
     args: ["commit-check-mcp"]
 ```
 
-## Run Manually
+## Tools
 
-```bash
-# If installed via pip
-commit-check-mcp
+| Tool | What it checks | Arguments |
+|---|---|---|
+| `validate_commit_message` | A commit message: Conventional Commits, subject length and case, body, sign-off, WIP and fixup markers, AI attribution | `message` |
+| `validate_branch_name` | A branch name, or the checked-out one, and its rebase target when configured | `branch?` |
+| `validate_author_info` | Author name and email; read from the repository's git config when omitted | `author_name?` `author_email?` |
+| `validate_commit_context` | Message, branch and author in one call, for whichever you pass | `message?` `branch?` `author_name?` `author_email?` |
+| `validate_push_safety` | That a push is not a force push (CC301) | `push_refs?` — pre-push lines; omit to compare the branch with its upstream |
+| `validate_repository_state` | The latest commit's message and author, the checked-out branch and, optionally, the push | `include_message` `include_branch` `include_author` (default `true`), `include_push` (default `false`) |
+| `describe_validation_rules` | Nothing: returns the merged config and the rules it enables | — |
+| `server_health` | Nothing: returns the server, commit-check and MCP SDK versions | — |
 
-# Or via uvx (no install needed)
-uvx commit-check-mcp
-```
+Every tool but `server_health` also takes:
 
-The server uses stdio transport, which is the recommended MCP default for local tool integrations.
+- `repo_path` — the repository whose `cchk.toml` / `commit-check.toml` applies.
+  It must be a git repository when the tool reads git state; a plain directory
+  holding a config file is enough when you pass every value yourself.
+- `config_path` — a config file to use instead of the repository's own;
+  relative paths resolve from `repo_path`.
+- `config` — inline overrides merged on top, e.g. `{"commit": {"require_body": true}}`.
 
-## Tool Usage
+No tool changes the working tree or the commits. `validate_push_safety` and
+`validate_repository_state` may run `git fetch` to resolve a SHA, so only they
+are annotated as not read-only; a client that gates on MCP tool hints can
+auto-approve the other six.
 
-After the client starts the server, it will expose these tools:
+<details>
+<summary><b>Example arguments</b></summary>
 
-- `server_health`: returns server, SDK, and dependency versions
-- `validate_commit_message(message, config?, repo_path?, config_path?)`
-- `validate_branch_name(branch?, config?, repo_path?, config_path?)`
-- `validate_push_safety(push_refs?, config?, repo_path?, config_path?)`
-- `validate_author_info(author_name?, author_email?, config?, repo_path?, config_path?)`
-- `validate_commit_context(message?, branch?, author_name?, author_email?, config?, repo_path?, config_path?)`
-- `validate_repository_state(repo_path?, config?, config_path?, include_message?, include_branch?, include_author?, include_push?)`
-- `describe_validation_rules(config?, repo_path?, config_path?)`
-
-Every parameter carries a description in the tool's JSON input schema, so an
-MCP client (and the model behind it) can see what each one expects without
-reading this file: for example `push_refs` documents the git pre-push line
-format `<local_ref> <local_sha> <remote_ref> <remote_sha>`. Each tool also has
-a display `title` and MCP tool annotations: `destructiveHint: false` and
-`idempotentHint: true` everywhere, `readOnlyHint: true` on the six tools that
-only read, and `readOnlyHint: false` with `openWorldHint: true` on
-`validate_push_safety` and `validate_repository_state`, because the force-push
-check may run `git fetch` to resolve a SHA, which updates `FETCH_HEAD` and
-remote-tracking refs (the working tree and commits are never touched). Clients
-that gate tool calls on those hints can auto-approve the read-only six. The
-server's `instructions` describe the intended
-loop: validate first, read `status` (only `fail` rejects, `skip` is not
-approval), apply a non-empty `fix` verbatim or follow `suggest`, then validate
-again.
-
-The common optional arguments are:
-
-- `repo_path`: repository directory to validate against; it must be a git repository when the tool reads git state (branch, author, or push refs omitted, `validate_repository_state`, or `push_refs` given, whose SHAs must resolve there), and may be a plain directory holding a config file when every other value is supplied
-- `config_path`: explicit TOML config file, used instead of the repository's own `cchk.toml`/`commit-check.toml`; relative paths resolve from `repo_path`
-- `config`: ad-hoc config overrides merged on top of defaults and repo config
-
-## Common Examples
-
-Validate a commit message using repo-local rules:
+Validate a message with the repository's rules:
 
 ```json
 {
@@ -199,27 +115,16 @@ Validate a commit message using repo-local rules:
 }
 ```
 
-Validate the current repository branch using an explicit config file:
+Check the repository as it stands, including the push:
 
 ```json
 {
   "repo_path": "/path/to/repo",
-  "config_path": ".github/commit-check.toml"
+  "include_push": true
 }
 ```
 
-Validate the full repository state:
-
-```json
-{
-  "repo_path": "/path/to/repo",
-  "include_message": true,
-  "include_branch": true,
-  "include_author": true
-}
-```
-
-Validate push safety from git pre-push hook ref metadata (`push_refs` must be non-empty when given; omit it to check the current branch against its upstream):
+Validate push safety from git pre-push ref metadata (`<local_ref> <local_sha> <remote_ref> <remote_sha>`):
 
 ```json
 {
@@ -228,7 +133,7 @@ Validate push safety from git pre-push hook ref metadata (`push_refs` must be no
 }
 ```
 
-Inspect the final merged rules that will be applied:
+See which rules apply once an override is merged in:
 
 ```json
 {
@@ -241,46 +146,49 @@ Inspect the final merged rules that will be applied:
 }
 ```
 
-## Repository-Aware Validation
+</details>
 
-`commit-check` is most useful when it runs against a real git repository and its `cchk.toml` or `commit-check.toml` file. This MCP server now supports that directly:
+## Results
 
-- `repo_path` — run git-based validations against a specific repository
-- `config_path` — point to an explicit TOML config file; relative paths are resolved from `repo_path`
-- `config` — apply ad-hoc overrides on top of defaults and repo config
-
-Typical patterns:
-
-- Validate an explicit message with a repository's rules
-- Validate the current repository state — the latest commit's message and author, and the current branch — without passing message/branch/author values manually
-- Validate push safety using pre-push ref metadata, or check the current branch against its upstream
-- Inspect which rules are actually enabled after config merging
-
-Example payload for a repository-wide validation:
+Every `validate_*` tool returns the shape `commit-check --format json` prints:
 
 ```json
 {
-  "repo_path": "/path/to/repo",
-  "include_message": true,
-  "include_branch": true,
-  "include_author": true,
-  "include_push": true
+  "status": "pass|fail|skip",
+  "warnings": 0,
+  "checks": [
+    {
+      "rule_id": "CC001",
+      "check": "message",
+      "status": "pass|fail|warn|skip",
+      "value": "...",
+      "error": "...",
+      "suggest": "...",
+      "fix": "...",
+      "docs_url": "https://commit-check.com/rules/#cc001"
+    }
+  ]
 }
 ```
 
-Config precedence is:
+- Only `fail` is a rejection. `skip` means nothing was validated — never read
+  it as approval — and `warn` is reported without failing the run.
+- On `fail`, apply a non-empty `fix` verbatim, otherwise follow `suggest`,
+  then validate again. The server's instructions teach the agent this loop.
+- A call that cannot run at all — an empty `message`, a `repo_path` that does
+  not exist or is not a git repository where one is needed, an invalid config, a `push_refs` SHA
+  that cannot be resolved — comes back as an MCP tool error that names the
+  problem, never as a pass.
 
-1. `commit-check` built-in defaults
-2. repository config loaded from `repo_path`, or the file named by `config_path` when it is provided (it replaces the repository's own config file)
-3. inline `config` overrides passed to the tool
+## Development
 
-## Published On
+```bash
+pip install -e .[dev]
+python -m pytest
+```
 
-| Directory | Link |
-|---|---|
-| **Official MCP Registry** | [`io.github.commit-check/commit-check-mcp`](https://registry.modelcontextprotocol.io/?q=commit-check-mcp) |
-| **Glama.ai** | [`github/commit-check/commit-check-mcp`](https://glama.ai/mcp/servers/github/commit-check/commit-check-mcp) |
-| **PyPI** | [`commit-check-mcp`](https://pypi.org/project/commit-check-mcp/) |
+The server speaks stdio, so an MCP client launches it; run `uvx commit-check-mcp`
+by hand only to see that it starts.
 
 ---
 
