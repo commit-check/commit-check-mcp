@@ -1,0 +1,19 @@
+README.md
+  s_2d998574dcd18b::t_5d4a66996f8eec 1,3-6,8,10-14,16-20,22,24-28,30,33,36,49-53,79,81-109,118,123,127,136,149,151,153,157-170,174-181,183,185-188,190-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "259b6680af4b4e7dbedfaa1ac7d064311b724480",
+  "prompts": {},
+  "sessions": {
+    "s_2d998574dcd18b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a569585-25a8-4bf9-ad35-9992f6f6ba0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
