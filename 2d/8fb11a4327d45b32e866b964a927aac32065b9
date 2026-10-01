@@ -1,0 +1,29 @@
+README.md
+  s_66212c309e21f0::t_bd90ea732f243f 179-181
+src/commit_check_mcp/server.py
+  s_66212c309e21f0::t_3c798ad3698325 180-182
+  s_66212c309e21f0::t_2b0b27881258f8 408-449
+  s_66212c309e21f0::t_34df6249231570 739-740
+  s_66212c309e21f0::t_cf17b9c25cb790 7
+  s_66212c309e21f0::t_d56240b0d255e2 179
+tests/test_server.py
+  s_66212c309e21f0::t_1dec31237fcc0f 1447-1568,1570-1587
+  s_66212c309e21f0::t_7754b70169b601 674-675,677
+  s_66212c309e21f0::t_3d309047481dd0 7,1569
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2d8fb11a4327d45b32e866b964a927aac32065b9",
+  "prompts": {},
+  "sessions": {
+    "s_66212c309e21f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8763d161-5362-48a1-ae9b-11f7bcd83469",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
