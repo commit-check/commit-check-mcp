@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -1321,6 +1322,13 @@ def _repo_with_two_commits(root: Path) -> Path:
     return repo
 
 
+def _commit_check_at_least(*minimum: int) -> bool:
+    """Whether the installed commit-check release is at least ``minimum``."""
+    release = re.match(r"(\d+)\.(\d+)\.(\d+)", server.commit_check_version)
+    assert release, server.commit_check_version
+    return tuple(int(part) for part in release.groups()) >= minimum
+
+
 class TestPushRefsMustResolve:
     def test_fake_shas_are_a_tool_error(self, tmp_path: Path) -> None:
         repo = _repo_with_two_commits(tmp_path)
@@ -1384,6 +1392,10 @@ class TestPushRefsMustResolve:
         assert result["status"] == "fail"
 
     def test_repository_state_include_push_is_unaffected(self, tmp_path: Path) -> None:
+        # The upstream fallback is not held to the push_refs SHA check, so no
+        # tool error. The repository has no upstream, so nothing is compared:
+        # commit-check 2.18.2 reports that as a skip, earlier releases as a
+        # pass, and the dependency range allows both.
         repo = _repo_with_two_commits(tmp_path)
         result = server.validate_repository_state(
             repo_path=str(repo),
@@ -1392,7 +1404,7 @@ class TestPushRefsMustResolve:
             include_author=False,
             include_push=True,
         )
-        assert result["status"] == "pass"
+        assert result["status"] == ("skip" if _commit_check_at_least(2, 18, 2) else "pass")
         assert [c["check"] for c in result["checks"]] == ["no_force_push"]
 
 
