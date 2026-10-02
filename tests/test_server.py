@@ -889,6 +889,11 @@ class TestDescribeValidationRules:
         assert "supported_checks" in result
         assert "enabled_rules" in result
 
+    def test_inline_warn_is_reported_with_the_default_sections(self) -> None:
+        result = server.describe_validation_rules(config={"warn": ["message"]})
+        assert set(result["config"]) == {"commit", "branch", "push", "tag", "files", "warn"}
+        assert result["config"]["warn"] == ["message"]
+
 
 # ---------------------------------------------------------------------------
 # main
@@ -1210,6 +1215,30 @@ class TestRequireGitRepo:
 
 
 # ---------------------------------------------------------------------------
+# git missing from PATH is a tool error that says so
+# ---------------------------------------------------------------------------
+
+class TestGitNotAvailable:
+    @pytest.fixture
+    def no_git_on_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        empty = tmp_path / "empty-path"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+
+    @pytest.mark.usefixtures("no_git_on_path")
+    def test_checking_for_a_repository(self, tmp_path: Path) -> None:
+        with pytest.raises(ToolError, match="git is not available to inspect repo_path"):
+            server.validate_branch_name(repo_path=str(tmp_path))
+
+    @pytest.mark.usefixtures("no_git_on_path")
+    def test_resolving_push_refs(self) -> None:
+        with pytest.raises(ToolError, match="git is not available to inspect push_refs"):
+            server._require_push_shas_resolvable(
+                f"refs/heads/main {FAKE_SHA_A} refs/heads/main {FAKE_SHA_B}"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Blank push_refs is an error, not a vacuous pass
 # ---------------------------------------------------------------------------
 
@@ -1406,6 +1435,60 @@ class TestPushRefsMustResolve:
         )
         assert result["status"] == ("skip" if _commit_check_at_least(2, 18, 2) else "pass")
         assert [c["check"] for c in result["checks"]] == ["no_force_push"]
+
+    def test_lines_a_pre_push_hook_can_receive(self, tmp_path: Path) -> None:
+        # Full and abbreviated SHAs in either case, a blank line between refs,
+        # the "(delete)" local ref and zero SHA of a deletion, and a local ref
+        # given as a revision: every SHA resolves, so the push passes.
+        repo = _repo_with_two_commits(tmp_path)
+        head, parent = _rev(repo, "HEAD"), _rev(repo, "HEAD~1")
+        result = server.validate_push_safety(
+            push_refs=(
+                f"refs/heads/main {head.upper()} refs/heads/main {parent[:7]}\n"
+                "\n"
+                f"(delete) {ZERO_SHA} refs/heads/gone {parent}\n"
+                f"HEAD~0 {head} refs/tags/v1 {ZERO_SHA}"
+            ),
+            repo_path=str(repo),
+        )
+        assert result["status"] == "pass"
+
+
+# ---------------------------------------------------------------------------
+# The upstream fallback compares HEAD with a real upstream
+# ---------------------------------------------------------------------------
+
+def _repo_tracking_a_remote(root: Path) -> Path:
+    """A repository whose main branch tracks main on a local bare remote."""
+    remote = root / "remote.git"
+    _git(root, "init", "-q", "--bare", "-b", "main", str(remote))
+    repo = _repo_with_two_commits(root)
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    return repo
+
+
+class TestPushAgainstUpstream:
+    def test_branch_ahead_of_its_upstream_passes(self, tmp_path: Path) -> None:
+        repo = _repo_tracking_a_remote(tmp_path)
+        (repo / "file.txt").write_text("ahead\n")
+        _git(repo, "commit", "-q", "-am", "feat: third")
+        result = server.validate_push_safety(repo_path=str(repo))
+        assert result["status"] == "pass"
+        assert result["checks"][0]["value"] == "main -> origin/main"
+
+    def test_rewritten_branch_fails(self, tmp_path: Path) -> None:
+        repo = _repo_tracking_a_remote(tmp_path)
+        _git(repo, "commit", "-q", "--amend", "-m", "feat: second, rewritten")
+        result = server.validate_repository_state(
+            repo_path=str(repo),
+            include_message=False,
+            include_branch=False,
+            include_author=False,
+            include_push=True,
+        )
+        assert result["status"] == "fail"
+        assert result["checks"][0]["check"] == "no_force_push"
 
 
 # ---------------------------------------------------------------------------
