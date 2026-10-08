@@ -22,10 +22,11 @@
 </div>
 
 The [Model Context Protocol](https://modelcontextprotocol.io/) server for
-[Commit Check](https://github.com/commit-check/commit-check). It gives your
-coding agent the rules your CI enforces: the agent validates its commit
-message, branch name and author before it commits or pushes, and when a
-correction is unambiguous it gets the fix to apply.
+[Commit Check](https://github.com/commit-check/commit-check), commit policy as
+code for teams and AI agents. It gives your coding agent the rules your CI
+enforces: the agent validates its commit message, branch name and author before
+it commits or pushes, and when a correction is unambiguous it gets the fix to
+apply.
 
 ## Quick start
 
