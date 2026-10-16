@@ -8,7 +8,7 @@
 **Catch bad commits before they merge — inside your AI agent.**
 
 [![PyPI](https://img.shields.io/pypi/v/commit-check-mcp?labelColor=0b1620&logo=pypi&logoColor=white&color=2c9ccd)](https://pypi.org/project/commit-check-mcp/)
-[![CI](https://img.shields.io/github/actions/workflow/status/commit-check/commit-check-mcp/main.yml?branch=main&labelColor=0b1620&label=CI)](https://github.com/commit-check/commit-check-mcp/actions/workflows/main.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/commit-check/commit-check-mcp/ci.yml?branch=main&labelColor=0b1620&label=CI)](https://github.com/commit-check/commit-check-mcp/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/commit-check/commit-check-mcp?labelColor=0b1620&color=2c9ccd&label=coverage)](https://codecov.io/gh/commit-check/commit-check-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-2c9ccd?labelColor=0b1620)](https://registry.modelcontextprotocol.io/?q=commit-check-mcp)
 [![Glama](https://img.shields.io/badge/Glama-listed-2c9ccd?labelColor=0b1620)](https://glama.ai/mcp/servers/commit-check/commit-check-mcp)
@@ -190,6 +190,13 @@ python -m pytest
 
 The server speaks stdio, so an MCP client launches it; run `uvx commit-check-mcp`
 by hand only to see that it starts.
+
+## Community
+
+Questions and ideas go to [Discussions](https://github.com/commit-check/commit-check/discussions),
+bugs to [Issues](https://github.com/commit-check/commit-check-mcp/issues).
+Releases follow [Semantic Versioning](https://semver.org/). Released under the
+[MIT License](https://github.com/commit-check/commit-check-mcp/blob/main/LICENSE).
 
 ---
 
