@@ -174,8 +174,10 @@ Every `validate_*` tool returns the shape `commit-check --format json` prints:
 ```
 
 - Only `fail` is a rejection. `skip` means nothing was validated — never read
-  it as approval — and `warn` is reported without failing the run. A skipped
-  check names why in `reason`, e.g. `"author dependabot[bot] is in [commit].ignore_authors"`.
+  it as approval — and `warn` is reported without failing the run. With
+  commit-check 2.19.0 or later, a skipped check names why in `reason`, e.g.
+  `"author dependabot[bot] is in [commit].ignore_authors"`; older releases
+  leave the field out.
 - On `fail`, apply a non-empty `fix` verbatim, otherwise follow `suggest`,
   then validate again. The server's instructions teach the agent this loop.
 - A call that cannot run at all — an empty `message`, a `repo_path` that does
