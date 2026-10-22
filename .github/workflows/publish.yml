@@ -89,8 +89,12 @@ jobs:
 
       - name: Extract version from release tag
         id: version
+        env:
+          # Through the environment, not spliced into the script: a tag name
+          # may hold characters the shell would run.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="$RELEASE_TAG"
           if [ -z "$TAG" ]; then
             TAG="$(git describe --tags --abbrev=0)"
           fi
@@ -99,8 +103,9 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Set version in server.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           echo "Setting server.json version to $VERSION"
           jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.json.tmp
           mv server.json.tmp server.json
