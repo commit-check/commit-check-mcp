@@ -468,6 +468,58 @@ def _validate_push(
     return result
 
 
+@contextmanager
+def _pending_author(name: str | None, email: str | None):
+    """Make git report the given name/email as the author of the next commit.
+
+    commit-check judges a message not yet committed (CC017, ``ai_author``) by
+    the author ``git var GIT_AUTHOR_IDENT`` reports, which honours
+    ``GIT_AUTHOR_NAME``/``GIT_AUTHOR_EMAIL`` as ``git commit`` does. Setting
+    them lets that rule judge the author the caller passed instead of the
+    server's own git identity. Use it only inside :func:`_working_directory`,
+    whose lock keeps other calls from seeing the change.
+    """
+    overrides = {
+        key: value
+        for key, value in (("GIT_AUTHOR_NAME", name), ("GIT_AUTHOR_EMAIL", email))
+        if value is not None
+    }
+    saved = {key: os.environ.get(key) for key in overrides}
+    os.environ.update(overrides)
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _author_checks(
+    name: str | None, email: str | None, cfg: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Check the author the caller passed: name and email patterns, then CC017.
+
+    CC017 (``ai_author``) only exists when ``[commit] ai_attribution`` is
+    ``forbid`` or ``disclose``, so with the default policy it adds nothing.
+    """
+    checks: list[dict[str, Any]] = []
+    if name is not None:
+        checks += _run_checks(["author_name"], ValidationContext(stdin_text=name, config=cfg), cfg)[
+            "checks"
+        ]
+    if email is not None:
+        checks += _run_checks(
+            ["author_email"], ValidationContext(stdin_text=email, config=cfg), cfg
+        )["checks"]
+    with _pending_author(name, email):
+        checks += _run_checks(["ai_author"], ValidationContext(stdin_text="", config=cfg), cfg)[
+            "checks"
+        ]
+    return checks
+
+
 def _validate_author(
     name: str | None = None,
     email: str | None = None,
@@ -480,31 +532,11 @@ def _validate_author(
     cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
 
     with _working_directory(repo_path):
-        if name is not None and email is not None:
-            name_result = _run_checks(
-                ["author_name"],
-                ValidationContext(stdin_text=name, config=cfg),
-                cfg,
+        if name is None and email is None:
+            return _run_checks(
+                ["author_name", "author_email"], ValidationContext(stdin_text=None, config=cfg), cfg
             )
-            email_result = _run_checks(
-                ["author_email"],
-                ValidationContext(stdin_text=email, config=cfg),
-                cfg,
-            )
-            return _summarize(name_result["checks"] + email_result["checks"])
-
-        check_names: list[str] = []
-        stdin = None
-        if name is not None:
-            check_names.append("author_name")
-            stdin = name
-        if email is not None:
-            check_names.append("author_email")
-            stdin = email
-        if not check_names:
-            check_names = ["author_name", "author_email"]
-
-        return _run_checks(check_names, ValidationContext(stdin_text=stdin, config=cfg), cfg)
+        return _summarize(_author_checks(name, email, cfg))
 
 
 def _validate_all(
@@ -521,11 +553,14 @@ def _validate_all(
     cfg = _merge_config(config, repo_path=repo_path, config_path=config_path)
     checks: list[dict[str, Any]] = []
 
+    has_author = author_name is not None or author_email is not None
     with _working_directory(repo_path):
         if message is not None:
+            # With an author passed, CC017 runs below against that author.
+            message_checks = MESSAGE_CHECKS - {"ai_author"} if has_author else MESSAGE_CHECKS
             checks.extend(
                 _run_checks(
-                    MESSAGE_CHECKS,
+                    message_checks,
                     ValidationContext(stdin_text=message, config=cfg),
                     cfg,
                 )["checks"]
@@ -538,23 +573,8 @@ def _validate_all(
                     cfg,
                 )["checks"]
             )
-        if author_name is not None or author_email is not None:
-            if author_name is not None:
-                checks.extend(
-                    _run_checks(
-                        ["author_name"],
-                        ValidationContext(stdin_text=author_name, config=cfg),
-                        cfg,
-                    )["checks"]
-                )
-            if author_email is not None:
-                checks.extend(
-                    _run_checks(
-                        ["author_email"],
-                        ValidationContext(stdin_text=author_email, config=cfg),
-                        cfg,
-                    )["checks"]
-                )
+        if has_author:
+            checks.extend(_author_checks(author_name, author_email, cfg))
 
     return _summarize(checks)
 
@@ -640,7 +660,8 @@ def validate_author_info(
     config_path: ConfigPathParam = None,
 ) -> dict[str, Any]:
     """Validate a commit author's name and/or email against the configured rules (e.g. allowed
-    email domains, name patterns). Read-only.
+    email domains, name patterns, and under ai_attribution forbid/disclose that the author is not
+    an AI tool). Read-only.
 
     {result_shape}
 
@@ -888,9 +909,7 @@ def describe_validation_rules(
         "commit_check_version": commit_check_version,
         "config": merged_config,
         "supported_checks": list(
-            dict.fromkeys(
-                entry.check for entry in COMMIT_RULES + BRANCH_RULES + PUSH_RULES
-            )
+            dict.fromkeys(entry.check for entry in COMMIT_RULES + BRANCH_RULES + PUSH_RULES)
         ),
         "enabled_rules": rules,
     }

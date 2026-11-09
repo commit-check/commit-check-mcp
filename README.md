@@ -83,7 +83,7 @@ mcpServers:
 |---|---|---|
 | `validate_commit_message` | A commit message: Conventional Commits, subject length and case, body, sign-off, WIP and fixup markers, AI attribution | `message` |
 | `validate_branch_name` | A branch name, or the checked-out one, and its rebase target when configured | `branch?` |
-| `validate_author_info` | Author name and email; read from the repository's git config when omitted | `author_name?` `author_email?` |
+| `validate_author_info` | Author name and email, and whether an AI tool is the author (CC017); read from the repository's git config when omitted | `author_name?` `author_email?` |
 | `validate_commit_context` | Message, branch and author in one call, for whichever you pass | `message?` `branch?` `author_name?` `author_email?` |
 | `validate_push_safety` | That a push is not a force push (CC301) | `push_refs?` — pre-push lines; omit to compare the branch with its upstream |
 | `validate_repository_state` | The latest commit's message and author, the checked-out branch and, optionally, the push | `include_message` `include_branch` `include_author` (default `true`), `include_push` (default `false`) |
