@@ -283,8 +283,8 @@ class TestValidateAuthor:
 
         result = server._validate_author("Alice", "alice@example.com")
         assert result["status"] == "pass"
-        assert len(result["checks"]) == 2
-        assert calls == [["author_name"], ["author_email"]]
+        assert len(result["checks"]) == 3
+        assert calls == [["author_name"], ["author_email"], ["ai_author"]]
 
     def test_only_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: list[list[str]] = []
@@ -303,8 +303,8 @@ class TestValidateAuthor:
 
         result = server._validate_author(name="Bob")
         assert result["status"] == "pass"
-        assert len(result["checks"]) == 1
-        assert calls == [["author_name"]]
+        assert len(result["checks"]) == 2
+        assert calls == [["author_name"], ["ai_author"]]
 
     def test_only_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: list[list[str]] = []
@@ -323,8 +323,8 @@ class TestValidateAuthor:
 
         result = server._validate_author(email="bob@example.com")
         assert result["status"] == "pass"
-        assert len(result["checks"]) == 1
-        assert calls == [["author_email"]]
+        assert len(result["checks"]) == 2
+        assert calls == [["author_email"], ["ai_author"]]
 
     def test_neither_name_nor_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: list[list[str]] = []
@@ -1584,3 +1584,80 @@ class TestMessageChecksFollowCommitCheck:
         assert by_id["CC015"]["status"] == "fail"
         assert by_id["CC016"]["status"] == "pass"
         assert by_id["CC014"]["fix"] == "feat: add caching\n\nAssisted-by: Claude Opus 5"
+
+
+class TestAiAuthorJudgesThePassedAuthor:
+    """CC017 (commit-check 2.20) judges the author passed in, not the server's own.
+
+    The rule reads the author git would record for a message not yet
+    committed. Through this server that was the server's git identity, so an
+    agent asking about "Claude <noreply@anthropic.com>" under forbid was told
+    it passed, and a person's name could fail for the server's AI identity.
+    """
+
+    FORBID = {"commit": {"ai_attribution": "forbid"}}
+
+    @pytest.fixture(autouse=True)
+    def _requires_cc017(self) -> None:
+        from commit_check.rules_catalog import MESSAGE_CHECKS
+
+        if "ai_author" not in MESSAGE_CHECKS:
+            pytest.skip("commit-check before 2.20 has no CC017")
+
+    @pytest.fixture
+    def server_author(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "Server Identity")
+        monkeypatch.setenv("GIT_AUTHOR_EMAIL", "server@example.com")
+
+    @staticmethod
+    def _cc017(result: dict) -> list[dict]:
+        return [c for c in result["checks"] if c["rule_id"] == "CC017"]
+
+    @pytest.mark.usefixtures("server_author")
+    def test_author_info_fails_an_ai_author(self) -> None:
+        result = server.validate_author_info(
+            author_name="Claude", author_email="noreply@anthropic.com", config=self.FORBID
+        )
+        (cc017,) = self._cc017(result)
+        assert result["status"] == "fail"
+        assert cc017["status"] == "fail"
+        assert cc017["value"] == "Claude <noreply@anthropic.com>"
+
+    def test_author_info_passes_a_person(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GIT_AUTHOR_NAME", "Claude")
+        monkeypatch.setenv("GIT_AUTHOR_EMAIL", "noreply@anthropic.com")
+        result = server.validate_author_info(
+            author_name="Alice", author_email="alice@example.com", config=self.FORBID
+        )
+        (cc017,) = self._cc017(result)
+        assert result["status"] == "pass"
+        assert cc017["value"] == "Alice <alice@example.com>"
+        # The server's own author is back once the call returns.
+        assert os.environ["GIT_AUTHOR_NAME"] == "Claude"
+
+    @pytest.mark.usefixtures("server_author")
+    def test_commit_context_runs_cc017_once_against_the_passed_author(self) -> None:
+        result = server.validate_commit_context(
+            message="feat: add caching",
+            author_name="Claude",
+            author_email="noreply@anthropic.com",
+            config=self.FORBID,
+        )
+        (cc017,) = self._cc017(result)
+        assert cc017["status"] == "fail"
+        assert cc017["value"] == "Claude <noreply@anthropic.com>"
+
+    @pytest.mark.usefixtures("server_author")
+    def test_message_alone_still_uses_the_pending_author(self) -> None:
+        result = server.validate_commit_context(message="feat: add caching", config=self.FORBID)
+        (cc017,) = self._cc017(result)
+        assert cc017["value"] == "Server Identity <server@example.com>"
+
+    def test_no_cc017_under_the_default_policy(self) -> None:
+        result = server.validate_author_info(author_name="Claude")
+        assert self._cc017(result) == []
+
+    def test_environment_is_restored_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GIT_AUTHOR_NAME", raising=False)
+        server.validate_author_info(author_name="Claude", config=self.FORBID)
+        assert "GIT_AUTHOR_NAME" not in os.environ
